@@ -23,6 +23,25 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// ✅ Health check endpoint
+app.get('/', (req, res) => {
+  res.json({
+    status: 'OK',
+    message: 'Static Analysis Framework Backend API',
+    version: '2.0.0',
+    endpoints: {
+      upload: 'POST /api/upload',
+      scan: 'POST /api/scan',
+      report: 'GET /api/report_json',
+      logs: 'POST /api/scan_logs',
+      sonarqube: 'POST /api/sonarqube',
+      unified: 'GET /api/unified_report'
+    },
+    mobsf_url: MOBSF_URL,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // ✅ Directories for saved reports
 const REPORTS_DIR = path.join(__dirname, 'reports');
 const JSON_DIR = path.join(REPORTS_DIR, 'json');
