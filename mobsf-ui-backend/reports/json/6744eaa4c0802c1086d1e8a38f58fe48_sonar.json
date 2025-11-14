@@ -1,0 +1,87 @@
+{
+  "tool": "SonarQube",
+  "hash": "6744eaa4c0802c1086d1e8a38f58fe48",
+  "timestamp": "2025-11-14T13:12:21.539Z",
+  "projectKey": "android-app-6744eaa4",
+  "issues": [
+    {
+      "key": "java:S1444",
+      "rule": "S1444",
+      "severity": "CRITICAL",
+      "component": "com.example.app:MainActivity.java",
+      "line": 45,
+      "message": "Make this \"public static password\" field final",
+      "type": "VULNERABILITY",
+      "tags": [
+        "cwe",
+        "owasp-a6",
+        "security"
+      ]
+    },
+    {
+      "key": "java:S2068",
+      "rule": "S2068",
+      "severity": "CRITICAL",
+      "component": "com.example.app:Config.java",
+      "line": 12,
+      "message": "Remove this hardcoded password",
+      "type": "VULNERABILITY",
+      "tags": [
+        "cwe",
+        "owasp-a2",
+        "cert",
+        "sans-top25-porous"
+      ]
+    },
+    {
+      "key": "java:S1130",
+      "rule": "S1130",
+      "severity": "MAJOR",
+      "component": "com.example.app:DataProcessor.java",
+      "line": 89,
+      "message": "Remove the declaration of thrown exception, as it cannot be thrown from method",
+      "type": "CODE_SMELL",
+      "tags": [
+        "error-handling"
+      ]
+    },
+    {
+      "key": "java:S3776",
+      "rule": "S3776",
+      "severity": "MAJOR",
+      "component": "com.example.app:AuthHandler.java",
+      "line": 156,
+      "message": "Refactor this method to reduce its Cognitive Complexity from 18 to 15",
+      "type": "CODE_SMELL",
+      "tags": [
+        "brain-overload"
+      ]
+    },
+    {
+      "key": "java:S1135",
+      "rule": "S1135",
+      "severity": "INFO",
+      "component": "com.example.app:Utils.java",
+      "line": 34,
+      "message": "Complete the task associated to this TODO comment",
+      "type": "CODE_SMELL",
+      "tags": [
+        "bad-practice"
+      ]
+    }
+  ],
+  "measures": {
+    "bugs": 0,
+    "vulnerabilities": 2,
+    "code_smells": 3,
+    "coverage": 45.2,
+    "duplicated_lines_density": 3.4,
+    "ncloc": 2450,
+    "complexity": 245,
+    "cognitive_complexity": 189,
+    "security_rating": "C",
+    "reliability_rating": "A",
+    "maintainability_rating": "B"
+  },
+  "qualityGateStatus": "ERROR"
+}
