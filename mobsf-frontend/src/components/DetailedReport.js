@@ -113,7 +113,7 @@ export default function DetailedReport({ data }) {
   return (
     <div>
       {/* ========== HEADER: Security Score & App Info ========== */}
-      <Card className="mb-4 shadow-lg" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+      <Card className="mb-4 shadow-lg" style={{ background: 'linear-gradient(135deg, #4a90e2 0%, #357abd 100%)', color: 'white' }}>
         <Card.Body>
           <Container>
             <Row className="align-items-center">

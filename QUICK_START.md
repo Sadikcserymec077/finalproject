@@ -1,136 +1,65 @@
-# 🚀 Quick Start Guide
+# 🚀 Quick Start - One-Click Run
 
-## ⚡ Fastest Way to Run
+## For Windows Users
 
-### Windows (Automated)
+**Simply double-click `START.bat`** - That's it! 
+
+The script will automatically:
+1. ✅ Check prerequisites (Node.js, Docker)
+2. ✅ Install dependencies if needed
+3. ✅ Create and configure `.env` file with API key
+4. ✅ Start MobSF (Docker)
+5. ✅ Start Backend Server
+6. ✅ Start Frontend Server
+7. ✅ Open browser automatically
+
+## For Linux/Mac Users
+
+Run in terminal:
 ```bash
-setup.bat
-```
-Then follow the on-screen instructions.
-
----
-
-## 🐳 Manual Setup (3 Steps)
-
-### Step 1: Start MobSF
-```bash
-docker run -it --rm -p 8000:8000 opensecurity/mobile-security-framework-mobsf:latest
-```
-- Open http://localhost:8000
-- Login: `mobsf` / `mobsf`
-- Copy API key from API Docs
-
-### Step 2: Start Backend
-```bash
-cd mobsf-ui-backend
-npm install
-
-# Create .env file:
-echo MOBSF_URL=http://localhost:8000 > .env
-echo MOBSF_API_KEY=your-api-key-here >> .env
-echo PORT=4000 >> .env
-
-npm run dev
-```
-
-### Step 3: Start Frontend
-```bash
-cd mobsf-frontend
-npm install
 npm start
 ```
 
-✅ **Open:** http://localhost:3000
-
----
-
-## 📱 Test on Mobile
-
-**Option 1: Deploy to cloud** (see DEPLOYMENT_GUIDE.md)
-
-**Option 2: Use ngrok**
+Or:
 ```bash
-npm i -g ngrok
-ngrok http 3000
-```
-Access the ngrok URL from your phone.
-
----
-
-## 🎯 What to Do After Setup
-
-1. **Upload APK** - Drag & drop or browse
-2. **Wait for scan** - Progress bar shows status
-3. **View reports**:
-   - MobSF Summary
-   - Unified Report (combined analysis)
-   - Raw JSON (individual tool outputs)
-
----
-
-## 🆘 Quick Fixes
-
-### "Cannot connect to MobSF"
-```bash
-# Check MobSF is running
-docker ps | grep mobsf
-
-# If not, start it:
-docker run -it --rm -p 8000:8000 opensecurity/mobile-security-framework-mobsf:latest
+bash start.sh
 ```
 
-### "Port already in use"
-```bash
-npx kill-port 3000
-npx kill-port 4000
-```
+## First Time Setup
 
-### "Module not found"
-```bash
-cd mobsf-ui-backend
-rm -rf node_modules package-lock.json
-npm install
+If this is your first time running the project:
 
-cd ../mobsf-frontend
-rm -rf node_modules package-lock.json
-npm install
-```
+1. **Make sure Docker Desktop is running**
+2. **Double-click `START.bat`** (Windows) or run `npm start` (Linux/Mac)
+3. **Wait for all services to start** (about 15-20 seconds)
+4. **Browser will open automatically** at http://localhost:3000
 
-### "API key invalid"
-1. Go to http://localhost:8000
-2. Login → API Docs
-3. Copy new API key
-4. Update `mobsf-ui-backend/.env`
-5. Restart backend
+## What Gets Started
 
----
+- **MobSF**: http://localhost:8000 (Docker container)
+- **Backend API**: http://localhost:4000
+- **Frontend UI**: http://localhost:3000 (opens automatically)
 
-## 📚 Full Documentation
+## Stopping Services
 
-- **DEPLOYMENT_GUIDE.md** - Complete deployment instructions
-- **CHANGES_SUMMARY.md** - What changed in this version
-- **README.md** - Project overview
+**Windows:**
+- Close the command windows that opened
+- Run: `cd mobsf-ui-backend && docker-compose down`
 
----
+**Linux/Mac:**
+- Press `Ctrl+C` in the terminal
+- Run: `cd mobsf-ui-backend && docker-compose down`
 
-## ✅ Verify It's Working
+## Troubleshooting
 
-You should see:
+**Docker not running?**
+- Start Docker Desktop first, then run `START.bat` again
 
-1. **Upload page** with APK file selector
-2. **Recent Scans** list on the left
-3. **Report Panel** on the right
-4. **Navigation** at top (Dashboard, Reports, Settings)
+**Port already in use?**
+- Stop any services using ports 3000, 4000, or 8000
+- Or change ports in configuration files
 
-After uploading:
-- ✅ Progress bar animates
-- ✅ Status changes to "Scanning" → "Running Tools" → "Ready"
-- ✅ Report appears automatically
+**API key issues?**
+- The script auto-generates an API key
+- If you need to change it, run: `cd mobsf-ui-backend && node setup-api-key.js`
 
----
-
-## 🎉 That's It!
-
-Your Static Analysis Framework is now running.
-
-**Need help?** Check DEPLOYMENT_GUIDE.md for troubleshooting.

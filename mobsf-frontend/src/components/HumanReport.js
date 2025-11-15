@@ -267,7 +267,7 @@ export default function HumanReport({ data }) {
   return (
     <div>
       {/* TOP: Chart + Score + Compact Info */}
-      <Card className="mb-3 shadow-lg" style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+      <Card className="mb-3 shadow-lg" style={{ background: 'linear-gradient(135deg, #4a90e2 0%, #357abd 100%)', color: 'white' }}>
         <Card.Body>
           <Container>
             <Row className="align-items-center">

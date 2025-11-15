@@ -5,12 +5,15 @@ import { Card, Button, ProgressBar, Form, Badge } from 'react-bootstrap';
 import { uploadFile, triggerScan, getScanLogs, saveJsonReport, getReportJSON } from '../api';
 
 export default function UploadCard({ onUploaded }) {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [file, setFile] = useState(null); // Keep for backward compatibility
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('idle'); // idle | uploading | uploaded | scanning | ready | error
   const [message, setMessage] = useState('');
   const [hash, setHash] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState([]);
+  const [currentUploadIndex, setCurrentUploadIndex] = useState(0);
   const pollRef = useRef(null);
   const errorCountRef = useRef(0);
   const backoffRef = useRef(5000);
@@ -22,8 +25,12 @@ export default function UploadCard({ onUploaded }) {
   }, []);
 
   const handleChange = (e) => {
-    setFile(e.target.files[0]);
-    setMessage('');
+    const selectedFiles = Array.from(e.target.files || []);
+    if (selectedFiles.length > 0) {
+      setFiles(selectedFiles);
+      setFile(selectedFiles[0]); // Keep first file for backward compatibility
+      setMessage('');
+    }
   };
 
   const startPolling = (h) => {
@@ -123,24 +130,83 @@ export default function UploadCard({ onUploaded }) {
   // Analysis complete - no additional tools needed
 
   const handleUpload = async () => {
-    if (!file) return setMessage('Choose an APK first.');
-    setStatus('uploading'); setProgress(2); setMessage('Uploading...');
-    try {
-      const res = await uploadFile(file, (pe) => setProgress(Math.round((pe.loaded * 100) / pe.total)));
-      const h = res.data.hash || res.data.MD5 || res.data.md5;
-      setHash(h);
-      setStatus('uploaded');
-      setMessage('Uploaded — hash: ' + h);
-      setStatus('scanning');
-      await triggerScan(h);
-      setMessage('MobSF scan triggered — polling logs...');
-      startPolling(h);
-    } catch (err) {
-      console.error('upload error:', err?.response?.status, err?.response?.data || err?.message || err);
-      setStatus('error');
-      const errMsg = err?.response?.data?.error || err?.message || 'Upload failed';
-      setMessage(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+    if (!files || files.length === 0) return setMessage('Choose an APK file(s) first.');
+    
+    // Single file upload (backward compatible)
+    if (files.length === 1) {
+      setStatus('uploading'); setProgress(2); setMessage('Uploading...');
+      try {
+        const res = await uploadFile(files[0], (pe) => setProgress(Math.round((pe.loaded * 100) / pe.total)));
+        const h = res.data.hash || res.data.MD5 || res.data.md5;
+        setHash(h);
+        setStatus('uploaded');
+        setMessage('Uploaded — hash: ' + h);
+        setStatus('scanning');
+        await triggerScan(h);
+        setMessage('MobSF scan triggered — polling logs...');
+        startPolling(h);
+      } catch (err) {
+        console.error('upload error:', err?.response?.status, err?.response?.data || err?.message || err);
+        setStatus('error');
+        const errMsg = err?.response?.data?.error || err?.message || 'Upload failed';
+        setMessage(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+      }
+      return;
     }
+
+    // Multiple files upload - process sequentially
+    setStatus('uploading');
+    setMessage(`Uploading ${files.length} files...`);
+    setUploadQueue(files.map((f, idx) => ({ file: f, index: idx, status: 'pending', hash: null })));
+    setCurrentUploadIndex(0);
+    
+    // Process files sequentially
+    for (let i = 0; i < files.length; i++) {
+      setCurrentUploadIndex(i);
+      setMessage(`Uploading ${i + 1}/${files.length}: ${files[i].name}...`);
+      setProgress(Math.round(((i) / files.length) * 100));
+      
+      try {
+        const res = await uploadFile(files[i], (pe) => {
+          const fileProgress = Math.round((pe.loaded * 100) / pe.total);
+          const overallProgress = Math.round(((i + (fileProgress / 100)) / files.length) * 100);
+          setProgress(overallProgress);
+        });
+        
+        const h = res.data.hash || res.data.MD5 || res.data.md5;
+        
+        // Update queue
+        setUploadQueue(prev => prev.map((item, idx) => 
+          idx === i ? { ...item, status: 'uploaded', hash: h } : item
+        ));
+        
+        // Trigger scan for this file
+        setMessage(`Scanning ${i + 1}/${files.length}: ${files[i].name}...`);
+        await triggerScan(h);
+        
+        // Save report
+        try {
+          await saveJsonReport(h);
+        } catch (e) {
+          console.error('saveJsonReport error', e);
+        }
+        
+        // Notify parent for each completed file
+        if (onUploaded) {
+          onUploaded({ hash: h, filename: files[i].name, index: i, total: files.length });
+        }
+        
+      } catch (err) {
+        console.error(`Upload error for ${files[i].name}:`, err);
+        setUploadQueue(prev => prev.map((item, idx) => 
+          idx === i ? { ...item, status: 'error', error: err?.response?.data?.error || err?.message } : item
+        ));
+      }
+    }
+    
+    setProgress(100);
+    setStatus('ready');
+    setMessage(`✅ Completed uploading ${files.length} file(s)`);
   };
 
 
@@ -165,8 +231,10 @@ export default function UploadCard({ onUploaded }) {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      setFiles(droppedFiles);
+      setFile(droppedFiles[0]); // Keep first file for backward compatibility
       setMessage('');
     }
   };
@@ -234,11 +302,14 @@ export default function UploadCard({ onUploaded }) {
           </div>
           <div className="text-muted small">
             Supports: .apk, .zip, .xapk, .apks files
+            <br />
+            <strong>💡 Tip:</strong> Hold Ctrl/Cmd to select multiple files
           </div>
           <Form.Control 
             id="fileInput"
             type="file" 
             accept=".apk,.zip,.xapk,.apks" 
+            multiple
             onChange={handleChange} 
             style={{ 
               display: 'none',
@@ -249,11 +320,26 @@ export default function UploadCard({ onUploaded }) {
               padding: '0.75rem'
             }} 
           />
-          {file && (
+          {files.length > 0 && (
             <div className="mt-3">
-              <Badge bg="info" style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem' }}>
-                📄 {file.name}
-              </Badge>
+              {files.length === 1 ? (
+                <Badge bg="info" style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem' }}>
+                  📄 {files[0].name}
+                </Badge>
+              ) : (
+                <div>
+                  <Badge bg="info" style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', marginBottom: '8px' }}>
+                    📦 {files.length} files selected
+                  </Badge>
+                  <div style={{ marginTop: '8px', maxHeight: '150px', overflowY: 'auto' }}>
+                    {files.map((f, idx) => (
+                      <div key={idx} className="small text-muted" style={{ padding: '4px 0' }}>
+                        {idx + 1}. {f.name} ({(f.size / 1024 / 1024).toFixed(2)} MB)
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -263,7 +349,7 @@ export default function UploadCard({ onUploaded }) {
           <Button 
             variant="primary" 
             onClick={handleUpload} 
-            disabled={!file || status === 'uploading' || status === 'scanning'} 
+            disabled={files.length === 0 || status === 'uploading' || status === 'scanning'} 
             style={{ 
               background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               border: 'none',
@@ -275,13 +361,22 @@ export default function UploadCard({ onUploaded }) {
               boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)'
             }}
           >
-            {status === 'uploading' ? '⬆️ Uploading…' : 
+            {status === 'uploading' ? `⬆️ Uploading ${files.length > 1 ? `${currentUploadIndex + 1}/${files.length}…` : '…'}` : 
              status === 'scanning' ? '🔍 Scanning...' : 
-             '🚀 Upload & Analyze'}
+             files.length > 1 ? `🚀 Upload & Analyze ${files.length} Files` : '🚀 Upload & Analyze'}
           </Button>
           <Button 
             variant="outline-secondary" 
-            onClick={() => { setFile(null); setProgress(0); setMessage(''); setHash(null); setStatus('idle'); }} 
+            onClick={() => { 
+              setFiles([]); 
+              setFile(null); 
+              setProgress(0); 
+              setMessage(''); 
+              setHash(null); 
+              setStatus('idle'); 
+              setUploadQueue([]);
+              setCurrentUploadIndex(0);
+            }} 
             style={{ 
               borderColor: 'var(--border-color)', 
               color: 'var(--text-primary)',

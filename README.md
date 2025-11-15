@@ -86,7 +86,38 @@ Before you begin, ensure you have the following installed:
 
 ## 🚀 Quick Start
 
-### Windows Users - Automated Setup
+### ⚡ One-Click Start (Easiest Way!)
+
+**Windows Users:** Simply **double-click `START.bat`** - That's it!
+
+The script automatically:
+1. ✅ Checks prerequisites (Node.js, Docker)
+2. ✅ Installs dependencies if needed
+3. ✅ Creates and configures `.env` file with API key
+4. ✅ Starts MobSF (Docker)
+5. ✅ Starts Backend Server (port 4000)
+6. ✅ Starts Frontend Server (port 3000)
+7. ✅ Opens browser automatically
+
+**Linux/Mac Users:**
+```bash
+npm start
+```
+
+Or:
+```bash
+bash start.sh
+```
+
+**After initial setup, you can also use:**
+- Windows: `start.bat` or double-click `START.bat`
+- Cross-Platform: `npm start`
+
+---
+
+### 🛠️ First Time Setup
+
+#### Windows Users - Automated Setup
 
 ```bash
 # Clone the repository
@@ -103,7 +134,7 @@ The script will:
 3. ✅ Create `.env` file
 4. ✅ Guide you through next steps
 
-### macOS/Linux Users - Manual Setup
+#### macOS/Linux Users - Manual Setup
 
 See [Installation](#-installation) section below.
 

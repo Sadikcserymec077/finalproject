@@ -1,0 +1,29 @@
+{
+  "name": "static-analysis-framework",
+  "version": "2.0.0",
+  "description": "Unified framework for Android app security analysis",
+  "scripts": {
+    "start": "node start-all.js",
+    "stop": "node stop-all.js",
+    "start:windows": "start.bat",
+    "start:unix": "bash start.sh",
+    "mobsf": "cd mobsf-ui-backend && docker-compose up",
+    "backend": "cd mobsf-ui-backend && npm run dev",
+    "frontend": "cd mobsf-frontend && npm start",
+    "install:all": "npm install && cd mobsf-ui-backend && npm install && cd ../mobsf-frontend && npm install",
+    "setup": "node setup.js"
+  },
+  "keywords": [
+    "android",
+    "security",
+    "static-analysis",
+    "mobsf",
+    "apk"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
+

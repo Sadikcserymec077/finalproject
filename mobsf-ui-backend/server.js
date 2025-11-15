@@ -81,22 +81,66 @@ function sendProxyError(res, err) {
   res.status(status).json({ error: body });
 }
 
-// ✅ 1. Upload File
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+// ✅ 1. Upload File (Single or Multiple)
+app.post('/api/upload', upload.array('file', 10), async (req, res) => {
   try {
-    if (!req.file) return res.status(422).json({ error: 'No file provided' });
-    const filePath = req.file.path;
-    const form = new FormData();
-    form.append('file', fs.createReadStream(filePath), req.file.originalname);
+    if (!req.files || req.files.length === 0) {
+      return res.status(422).json({ error: 'No file provided' });
+    }
 
-    console.log('Forwarding upload to MobSF...');
-    const resp = await axios.post(`${MOBSF_URL}/api/v1/upload`, form, {
-      headers: { ...form.getHeaders(), ...mobHeaders() },
-      maxBodyLength: Infinity,
+    // If single file, return single response (backward compatible)
+    if (req.files.length === 1) {
+      const file = req.files[0];
+      const filePath = file.path;
+      const form = new FormData();
+      form.append('file', fs.createReadStream(filePath), file.originalname);
+
+      console.log('Forwarding upload to MobSF...');
+      const resp = await axios.post(`${MOBSF_URL}/api/v1/upload`, form, {
+        headers: { ...form.getHeaders(), ...mobHeaders() },
+        maxBodyLength: Infinity,
+      });
+
+      fs.unlinkSync(filePath); // clean temp
+      return res.json(resp.data);
+    }
+
+    // Multiple files - process sequentially
+    const results = [];
+    for (const file of req.files) {
+      try {
+        const filePath = file.path;
+        const form = new FormData();
+        form.append('file', fs.createReadStream(filePath), file.originalname);
+
+        console.log(`Forwarding upload to MobSF: ${file.originalname}...`);
+        const resp = await axios.post(`${MOBSF_URL}/api/v1/upload`, form, {
+          headers: { ...form.getHeaders(), ...mobHeaders() },
+          maxBodyLength: Infinity,
+        });
+
+        fs.unlinkSync(filePath); // clean temp
+        results.push({
+          filename: file.originalname,
+          success: true,
+          data: resp.data
+        });
+      } catch (err) {
+        // Clean up file even on error
+        try { fs.unlinkSync(file.path); } catch {}
+        results.push({
+          filename: file.originalname,
+          success: false,
+          error: err.response?.data?.error || err.message
+        });
+      }
+    }
+
+    res.json({
+      multiple: true,
+      count: results.length,
+      results: results
     });
-
-    fs.unlinkSync(filePath); // clean temp
-    res.json(resp.data);
   } catch (err) {
     sendProxyError(res, err);
   }
