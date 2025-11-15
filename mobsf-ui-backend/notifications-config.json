@@ -6,13 +6,13 @@
       "port": 587,
       "secure": true,
       "auth": {
-        "user": "mohammedsadiq4850@gmail.com",
+        "user": "sender4850@gmail.com",
         "pass": ""
       }
     },
-    "from": "mohammedsadiq4850@gmail.com",
+    "from": "sender@gmail.com",
     "to": [
-      "sadik.cse.rymec@gmail.com"
+      "receiver@gmail.com"
     ]
   },
   "alerts": {
@@ -26,7 +26,7 @@
   },
   "emailService": {
     "type": "sendgrid",
-    "sendgridApiKey": ""
+    "sendgridApiKey": "api-key"
   },
   "lastUpdated": "2025-11-15T14:04:47.980Z"
 }
