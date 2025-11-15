@@ -30,3 +30,9 @@ node_modules/
 dist/
 build/
 
+# Configuration files with secrets
+notifications-config.json
+auth-config.json
+users.json
+shareable-links.json
+

@@ -1,0 +1,13 @@
+{
+  "users": [
+    {
+      "username": "admin",
+      "password": "$2a$10$example.hashed.password.here",
+      "email": "admin@example.com",
+      "role": "admin",
+      "createdAt": ""
+    }
+  ],
+  "lastUpdated": ""
+}
+

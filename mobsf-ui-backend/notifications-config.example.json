@@ -1,18 +1,18 @@
 {
   "email": {
-    "enabled": true,
+    "enabled": false,
     "smtp": {
       "host": "smtp.gmail.com",
       "port": 587,
       "secure": true,
       "auth": {
-        "user": "mohammedsadiq4850@gmail.com",
+        "user": "your-email@gmail.com",
         "pass": ""
       }
     },
-    "from": "mohammedsadiq4850@gmail.com",
+    "from": "your-email@gmail.com",
     "to": [
-      "sadik.cse.rymec@gmail.com"
+      "recipient@example.com"
     ]
   },
   "alerts": {
@@ -25,8 +25,9 @@
     }
   },
   "emailService": {
-    "type": "sendgrid",
+    "type": "smtp",
     "sendgridApiKey": ""
   },
-  "lastUpdated": "2025-11-15T14:04:47.980Z"
+  "lastUpdated": ""
 }
+
