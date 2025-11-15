@@ -21,7 +21,15 @@ const APK_EXTRACT_DIR = path.join(__dirname, 'apk-extracted');
 try { fs.mkdirSync(APK_EXTRACT_DIR, { recursive: true }); } catch {}
 const app = express();
 app.use(express.json());
-app.use(cors());
+
+// CORS configuration for production
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || '*', // Allow all origins in development, set specific in production
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Mobsf-Api-Key']
+};
+app.use(cors(corsOptions));
 
 // ✅ Health check endpoint
 app.get('/', (req, res) => {

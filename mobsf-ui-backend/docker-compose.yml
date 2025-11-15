@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  mobsf:
+    image: opensecurity/mobile-security-framework-mobsf:latest
+    container_name: mobsf
+    ports:
+      - "8000:8000"
+    environment:
+      # This reads MOBSF_API_KEY from your .env file
+      # Make sure to set MOBSF_API_KEY in .env file (run: node setup-api-key.js)
+      - MOBSF_API_KEY=${MOBSF_API_KEY}
+    env_file:
+      # Load environment variables from .env file
+      - .env
+    volumes:
+      # Optional: Persist MobSF data across container restarts
+      - mobsf_data:/root/.MobSF
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  mobsf_data:
+

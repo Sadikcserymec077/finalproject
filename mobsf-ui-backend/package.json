@@ -4,10 +4,11 @@
     "description": "Backend proxy for MobSF UI",
     "main": "server.js",
     "type": "commonjs",
-    "scripts": {
-        "start": "node server.js",
-        "dev": "nodemon server.js"
-    },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "setup-api-key": "node setup-api-key.js"
+  },
     "dependencies": {
         "adm-zip": "^0.5.16",
         "axios": "^1.7.4",

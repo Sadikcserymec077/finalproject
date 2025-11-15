@@ -198,7 +198,7 @@ export default function DetailedReport({ data }) {
           <Row>
             {/* Severity Distribution */}
             <Col md={6} className="mb-4">
-              <Card className="shadow-sm h-100">
+              <Card className="shadow-sm h-100" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }}>
                 <Card.Body>
                   <Card.Title>Issues by Severity</Card.Title>
                   <ResponsiveContainer width="100%" height={300}>
@@ -225,7 +225,7 @@ export default function DetailedReport({ data }) {
 
             {/* Tool Distribution */}
             <Col md={6} className="mb-4">
-              <Card className="shadow-sm h-100">
+              <Card className="shadow-sm h-100" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }}>
                 <Card.Body>
                   <Card.Title>Issues by Tool</Card.Title>
                   <ResponsiveContainer width="100%" height={300}>
@@ -247,7 +247,7 @@ export default function DetailedReport({ data }) {
 
             {/* Category Distribution */}
             <Col md={6} className="mb-4">
-              <Card className="shadow-sm h-100">
+              <Card className="shadow-sm h-100" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }}>
                 <Card.Body>
                   <Card.Title>Top Issue Categories</Card.Title>
                   <ResponsiveContainer width="100%" height={300}>
@@ -265,7 +265,7 @@ export default function DetailedReport({ data }) {
 
             {/* Security Radar */}
             <Col md={6} className="mb-4">
-              <Card className="shadow-sm h-100">
+              <Card className="shadow-sm h-100" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)' }}>
                 <Card.Body>
                   <Card.Title>Security Dimensions</Card.Title>
                   <ResponsiveContainer width="100%" height={300}>

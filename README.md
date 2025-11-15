@@ -118,17 +118,62 @@ git clone https://github.com/YOUR_USERNAME/static-analysis-mobsf.git
 cd static-analysis-mobsf
 ```
 
-### Step 2: Start MobSF (Docker)
+### Step 2: Start MobSF (Docker) with Persistent API Key
+
+**Option A: Using Docker Compose (Recommended - Persistent API Key)**
 
 ```bash
-# Pull MobSF Docker image
-docker pull opensecurity/mobile-security-framework-mobsf:latest
+# Navigate to backend directory
+cd mobsf-ui-backend
 
-# Run MobSF container
-docker run -it --rm -p 8000:8000 opensecurity/mobile-security-framework-mobsf:latest
+# Create .env file with your API key
+# Run the setup script to generate/configure API key
+node setup-api-key.js
+
+# Or manually create .env file with your desired API key:
+# MOBSF_API_KEY=your-secure-api-key-here
+
+# Start MobSF with Docker Compose (uses same API key every time)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f mobsf
 ```
 
-**Get your API key:**
+**Option B: Using Docker Run with Persistent API Key**
+
+```bash
+# Set your API key (use the same one in .env file)
+export MOBSF_API_KEY="your-secure-api-key-here"  # Linux/Mac
+# OR
+set MOBSF_API_KEY=your-secure-api-key-here       # Windows CMD
+
+# Run MobSF container with persistent API key
+docker run -it --rm -p 8000:8000 -e MOBSF_API_KEY="${MOBSF_API_KEY}" opensecurity/mobile-security-framework-mobsf:latest
+```
+
+**Option C: Using Helper Scripts**
+
+**Linux/Mac:**
+```bash
+cd mobsf-ui-backend
+chmod +x start-mobsf.sh
+./start-mobsf.sh
+```
+
+**Windows:**
+```cmd
+cd mobsf-ui-backend
+start-mobsf.bat
+```
+
+**Why use persistent API key?**
+- ✅ Same API key every time you restart the container
+- ✅ No need to manually copy API key from MobSF web interface
+- ✅ Works seamlessly with your `.env` file
+- ✅ Better for automation and CI/CD
+
+**Get your API key (if not using persistent setup):**
 1. Open http://localhost:8000 in your browser
 2. Login with default credentials: `mobsf` / `mobsf`
 3. Navigate to **API Docs** section
@@ -143,21 +188,26 @@ cd mobsf-ui-backend
 # Install dependencies
 npm install
 
-# Create .env file
-touch .env  # or use your text editor
+# Setup API key (interactive script)
+node setup-api-key.js
+
+# OR manually create .env file
+# Copy .env.example to .env and update MOBSF_API_KEY
 ```
 
-**Add the following to `.env`:**
+**The `.env` file should contain:**
 
 ```env
 MOBSF_URL=http://localhost:8000
-MOBSF_API_KEY=your-api-key-here
+MOBSF_API_KEY=your-api-key-here  # Use the SAME key you set in Docker
 PORT=4000
 
 # Optional: SonarQube configuration (leave empty for simulated mode)
 SONAR_HOST=
 SONAR_TOKEN=
 ```
+
+**Important:** The `MOBSF_API_KEY` in your `.env` file must match the API key you set when starting the MobSF Docker container. This ensures the backend can communicate with MobSF.
 
 **Start the backend:**
 

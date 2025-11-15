@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: mobsf-backend
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MOBSF_URL
+        sync: false
+      - key: MOBSF_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
