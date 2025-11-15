@@ -36,6 +36,18 @@
 - 🚀 **Auto-Run Tools** - Automatically run all tools after upload
 - 💾 **PDF Export** - Download MobSF PDF reports
 
+### Advanced Features (Latest Updates)
+- 🔍 **Search & Filter** - Search by app name, package, hash, severity, date range, security score
+- 📊 **Report Comparison** - Side-by-side comparison of two APK analyses
+- 📧 **Email Notifications** - SMTP/SendGrid support with PDF attachments
+- 👥 **Multi-User Authentication** - JWT-based user management
+- 🏷️ **Report Management** - Tags, favorites, archiving, bulk delete
+- 📝 **Annotations** - Add notes and mark false positives
+- 📈 **Analytics Dashboard** - Security trends, vulnerability statistics, top issues
+- 📤 **CSV Export** - Export findings to CSV format
+- ⚡ **Performance** - Report caching for faster access
+- 🔔 **Alerts** - Critical vulnerability notifications
+
 ### Analysis Tools
 1. **MobSF** - Real-time mobile security analysis
 2. **SonarQube** - Code quality and security analysis (configurable)
@@ -93,7 +105,7 @@ Before you begin, ensure you have the following installed:
 The script automatically:
 1. ✅ Checks prerequisites (Node.js, Docker)
 2. ✅ Installs dependencies if needed
-3. ✅ Creates and configures `.env` file with API key
+3. ✅ Creates and configures `.env` file with auto-generated API key
 4. ✅ Starts MobSF (Docker)
 5. ✅ Starts Backend Server (port 4000)
 6. ✅ Starts Frontend Server (port 3000)
@@ -113,6 +125,8 @@ bash start.sh
 - Windows: `start.bat` or double-click `START.bat`
 - Cross-Platform: `npm start`
 
+> 📖 **For detailed setup instructions, see [ONE_CLICK_SETUP.md](ONE_CLICK_SETUP.md)**
+
 ---
 
 ### 🛠️ First Time Setup
@@ -121,8 +135,8 @@ bash start.sh
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/static-analysis-mobsf.git
-cd static-analysis-mobsf
+git clone <repository-url>
+cd static-analysis-mobsf-main
 
 # Run automated setup script
 setup.bat
@@ -131,12 +145,26 @@ setup.bat
 The script will:
 1. ✅ Check for Node.js and Docker
 2. ✅ Install all dependencies
-3. ✅ Create `.env` file
+3. ✅ Create `.env` file with auto-generated API key
 4. ✅ Guide you through next steps
 
-#### macOS/Linux Users - Manual Setup
+#### macOS/Linux Users - Automated Setup
 
-See [Installation](#-installation) section below.
+```bash
+# Clone the repository
+git clone <repository-url>
+cd static-analysis-mobsf-main
+
+# Run setup script
+node setup.js
+```
+
+Or use the one-click start:
+```bash
+npm start
+```
+
+> 📖 **For complete setup guide, see [ONE_CLICK_SETUP.md](ONE_CLICK_SETUP.md)**
 
 ---
 
@@ -702,7 +730,7 @@ This project is licensed under the **MIT License**.
 
 ## 🔄 Changelog
 
-### v2.0.0 (Current)
+### v2.0.0 (Current) - Latest Updates
 - ✅ Removed Android Lint integration
 - ✅ Updated to "Static Analysis Framework"
 - ✅ Added functional navigation (Dashboard, Reports, Settings)
@@ -714,6 +742,17 @@ This project is licensed under the **MIT License**.
 - ✅ Enhanced UI with modern gradients
 - ✅ Added comprehensive deployment guides
 - ✅ Created automated setup scripts
+- ✅ **Search & Filter Reports** - Advanced search by multiple criteria
+- ✅ **Report Comparison** - Side-by-side analysis comparison
+- ✅ **Email Notifications** - SMTP/SendGrid with PDF attachments
+- ✅ **Multi-User Authentication** - JWT-based user management
+- ✅ **Report Management** - Tags, favorites, archiving, bulk operations
+- ✅ **Annotations System** - Notes and false positive marking
+- ✅ **Analytics Dashboard** - Security trends and statistics
+- ✅ **CSV Export** - Export findings to CSV
+- ✅ **Performance Caching** - Faster report access
+- ✅ **Critical Alerts** - Automated vulnerability notifications
+- ✅ **One-Click Setup** - Automated installation and configuration
 
 ### v1.0.0
 - Initial release with MobSF, Android Lint, and SonarQube

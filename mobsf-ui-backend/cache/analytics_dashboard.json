@@ -1,0 +1,83 @@
+{
+  "key": "analytics_dashboard",
+  "value": {
+    "totalReports": 4,
+    "totalFindings": 25,
+    "severityBreakdown": {
+      "critical": 0,
+      "high": 10,
+      "medium": 0,
+      "low": 0,
+      "info": 15
+    },
+    "averageScore": 41,
+    "scoreDistribution": {
+      "excellent": 1,
+      "good": 0,
+      "fair": 1,
+      "poor": 2
+    },
+    "recentActivity": [
+      {
+        "hash": "aa76bd1becae0c3f8a70d2ecacc4b10d",
+        "appName": "NetMirror",
+        "timestamp": "2025-11-15T15:21:40.016Z",
+        "score": 0
+      },
+      {
+        "hash": "97ce40ff2ed9d63b98683313d80fc7ff",
+        "appName": "PΜ ҮΟͿΑNA ",
+        "timestamp": "2025-11-15T13:40:57.804Z",
+        "score": 56
+      },
+      {
+        "hash": "5b40b49cd80dbe20ba611d32045b57c6",
+        "appName": "DamnVulnerableBank",
+        "timestamp": "2025-11-15T13:38:29.936Z",
+        "score": 85
+      },
+      {
+        "hash": "a3b1e6614ffced9045e357ef0b24c9c1",
+        "appName": "Swag Labs Mobile App",
+        "timestamp": "2025-11-15T11:41:14.426Z",
+        "score": 22
+      }
+    ],
+    "topVulnerabilities": {
+      "Clear text traffic is Enabled For App<br>[android:usesCleartextTraffic=true]": 3,
+      "<strong>Activity</strong> (androidx.biometric.DeviceCredentialHandlerActivity) is not Protected. <br>[android:exported=true]": 2,
+      "App can be installed on a vulnerable unpatched Android version<br>Android 7.0, [minSdk=24]": 2,
+      "App can be installed on a vulnerable unpatched Android version<br>Android 5.0-5.0.2, [minSdk=21]": 1,
+      "App has a Network Security Configuration<br>[android:networkSecurityConfig=@xml/network_security_config]": 1,
+      "Application Data can be Backed up<br>[android:allowBackup=true]": 1,
+      "<strong>Activity</strong> (com.app.damnvulnerablebank.CurrencyRates) is not Protected.<br>An intent-filter exists.": 1,
+      "<strong>Activity</strong> (com.app.damnvulnerablebank.SendMoney) is not Protected. <br>[android:exported=true]": 1,
+      "<strong>Activity</strong> (com.app.damnvulnerablebank.ViewBalance) is not Protected. <br>[android:exported=true]": 1,
+      "<strong>Activity</strong> (com.google.firebase.auth.internal.FederatedSignInActivity) is Protected by a permission, but the protection level of the permission should be checked.<br><strong>Permission: </strong>com.google.firebase.auth.api.gms.permission.LAUNCH_FEDERATED_SIGN_IN <br>[android:exported=true]": 1
+    },
+    "trendData": [
+      {
+        "date": "2025-11-15T11:41:14.426Z",
+        "score": 22,
+        "findings": 6
+      },
+      {
+        "date": "2025-11-15T13:38:29.936Z",
+        "score": 85,
+        "findings": 9
+      },
+      {
+        "date": "2025-11-15T13:40:57.804Z",
+        "score": 56,
+        "findings": 7
+      },
+      {
+        "date": "2025-11-15T15:21:40.016Z",
+        "score": 0,
+        "findings": 3
+      }
+    ]
+  },
+  "expiresAt": "2025-11-15T15:42:13.957Z",
+  "cachedAt": "2025-11-15T15:37:13.957Z"
+}

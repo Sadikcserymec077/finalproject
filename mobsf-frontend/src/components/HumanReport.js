@@ -1,6 +1,6 @@
 // src/components/HumanReport.js
 import React, { useState } from "react";
-import { Card, Badge, Table, Row, Col, ListGroup, Container, Button, Collapse, OverlayTrigger, Tooltip as BSTooltip, Accordion } from "react-bootstrap";
+import { Card, Badge, Table, Row, Col, ListGroup, Container, Button, Collapse, OverlayTrigger, Tooltip as BSTooltip, Accordion, Alert } from "react-bootstrap";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 const SEVERITY_COLORS = {
@@ -220,12 +220,23 @@ export default function HumanReport({ data }) {
   // -------------------------
   // Score calculation (matches PDF calculation - based on ALL findings)
   // - weights: high=10, medium/warning=5, info=1, dangerous-permission=8
+  // First check if score is already calculated in the data
   // -------------------------
+  let score;
+  if (data.security_score !== undefined && data.security_score !== null) {
+    // Use pre-calculated score if available
+    score = data.security_score;
+  } else if (data.securityScore !== undefined && data.securityScore !== null) {
+    // Alternative field name
+    score = data.securityScore;
+  } else {
+    // Calculate from findings
   const totalFindings = finalCounts.high + finalCounts.medium + finalCounts.info;
   const overallItems = totalFindings + dangerousPermsCount;
   const weightedPenalty = (finalCounts.high * 10) + (finalCounts.medium * 5) + (finalCounts.info * 1) + (dangerousPermsCount * 8);
   const maxPenalty = Math.max(overallItems * 10, 1);
-  const score = Math.max(0, Math.round(100 - (weightedPenalty / maxPenalty) * 100));
+    score = Math.max(0, Math.round(100 - (weightedPenalty / maxPenalty) * 100));
+  }
 
   // -------------------------
   // Pie data (High/Medium/Info)
@@ -344,6 +355,59 @@ export default function HumanReport({ data }) {
                   <div>High: <strong>{finalCounts.high}</strong> &nbsp; Medium: <strong>{finalCounts.medium}</strong> &nbsp; Info: <strong>{finalCounts.info}</strong></div>
                   <div className="mt-1">Dangerous perms: <strong>{dangerousPermsCount}</strong></div>
                 </div>
+                
+                {/* Install Recommendation */}
+                <div className="mt-4">
+                  {score >= 70 ? (
+                    <Alert variant="success" style={{ 
+                      background: 'rgba(40, 167, 69, 0.2)', 
+                      border: '2px solid rgba(40, 167, 69, 0.5)',
+                      borderRadius: '12px',
+                      padding: '12px',
+                      margin: 0
+                    }}>
+                      <div className="d-flex align-items-center">
+                        <span style={{ fontSize: '1.5rem', marginRight: '10px' }}>✅</span>
+                        <div>
+                          <strong>Safe to Install</strong>
+                          <div className="small mt-1">This app has a good security score. It's generally safe to install.</div>
+                        </div>
+                      </div>
+                    </Alert>
+                  ) : score >= 40 ? (
+                    <Alert variant="warning" style={{ 
+                      background: 'rgba(255, 193, 7, 0.2)', 
+                      border: '2px solid rgba(255, 193, 7, 0.5)',
+                      borderRadius: '12px',
+                      padding: '12px',
+                      margin: 0
+                    }}>
+                      <div className="d-flex align-items-center">
+                        <span style={{ fontSize: '1.5rem', marginRight: '10px' }}>⚠️</span>
+                        <div>
+                          <strong>Install with Caution</strong>
+                          <div className="small mt-1">This app has moderate security issues. Review the findings before installing.</div>
+                        </div>
+                      </div>
+                    </Alert>
+                  ) : (
+                    <Alert variant="danger" style={{ 
+                      background: 'rgba(220, 53, 69, 0.2)', 
+                      border: '2px solid rgba(220, 53, 69, 0.5)',
+                      borderRadius: '12px',
+                      padding: '12px',
+                      margin: 0
+                    }}>
+                      <div className="d-flex align-items-center">
+                        <span style={{ fontSize: '1.5rem', marginRight: '10px' }}>🚫</span>
+                        <div>
+                          <strong>Not Recommended to Install</strong>
+                          <div className="small mt-1">This app has significant security vulnerabilities. Avoid installing unless necessary.</div>
+                        </div>
+                      </div>
+                    </Alert>
+                  )}
+                </div>
               </Col>
 
               {/* Compact APK info */}
@@ -415,16 +479,12 @@ export default function HumanReport({ data }) {
                           {f.cwe && <div className="small text-muted mt-1">🔗 CWE: {f.cwe}</div>}
                           {f.owasp && <div className="small text-muted">🛡️ OWASP: {f.owasp}</div>}
                         </div>
-                        <div style={{minWidth:240}}>
-                          {f.remediation ? (
-                            <>
-                              <div className="small text-muted">💡 How to fix:</div>
-                              <div style={{marginTop:6, background: 'var(--bg-secondary)', padding: 8, borderRadius: 6, border: '1px solid var(--border-color)'}}><em className="small">{short(f.remediation, 400)}</em></div>
-                            </>
-                          ) : (
-                            <div className="small text-muted">No specific fix provided in report.</div>
-                          )}
-                        </div>
+                        {f.remediation && (
+                          <div style={{minWidth:240}}>
+                            <div className="small text-muted">💡 How to fix:</div>
+                            <div style={{marginTop:6, background: 'var(--bg-secondary)', padding: 8, borderRadius: 6, border: '1px solid var(--border-color)'}}><em className="small">{short(f.remediation, 400)}</em></div>
+                          </div>
+                        )}
                       </div>
                     </ListGroup.Item>
                   ))}

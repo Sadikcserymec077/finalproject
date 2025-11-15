@@ -1,0 +1,32 @@
+{
+  "email": {
+    "enabled": true,
+    "smtp": {
+      "host": "smtp.gmail.com",
+      "port": 587,
+      "secure": true,
+      "auth": {
+        "user": "mohammedsadiq4850@gmail.com",
+        "pass": ""
+      }
+    },
+    "from": "mohammedsadiq4850@gmail.com",
+    "to": [
+      "sadik.cse.rymec@gmail.com"
+    ]
+  },
+  "alerts": {
+    "enabled": true,
+    "criticalVulnerabilities": true,
+    "scanComplete": true,
+    "webhook": {
+      "enabled": false,
+      "url": ""
+    }
+  },
+  "emailService": {
+    "type": "sendgrid",
+    "sendgridApiKey": "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"
+  },
+  "lastUpdated": "2025-11-15T14:04:47.980Z"
+}

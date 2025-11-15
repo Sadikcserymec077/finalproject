@@ -1,0 +1,16 @@
+{
+  "links": [
+    {
+      "token": "7e2b847c02c57f743a3e6ba3389bcf03ebdc961a4d59298b4b35a0c530a50c2b",
+      "hash": "5b40b49cd80dbe20ba611d32045b57c6",
+      "expiresAt": null,
+      "maxViews": null,
+      "views": 0,
+      "password": null,
+      "createdAt": "2025-11-15T13:38:55.908Z",
+      "createdBy": "anonymous",
+      "accessCount": 0
+    }
+  ],
+  "lastUpdated": "2025-11-15T13:38:55.908Z"
+}

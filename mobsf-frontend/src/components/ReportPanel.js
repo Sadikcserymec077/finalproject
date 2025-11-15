@@ -3,6 +3,8 @@ import React, { useState, useEffect } from "react";
 import { Card, Button, Badge, ButtonGroup, Spinner, Alert } from "react-bootstrap";
 import { savePdfReport, saveJsonReport, getReportJSON } from "../api";
 import HumanReport from "./HumanReport";
+import TagManager from "./TagManager";
+import AnnotationsPanel from "./AnnotationsPanel";
 
 export default function ReportPanel({ hash, onNewAnalysis }) {
   const [report, setReport] = useState(null);
@@ -64,6 +66,7 @@ export default function ReportPanel({ hash, onNewAnalysis }) {
       setLoading(false); 
     }
   };
+
 
   const handleDownloadPdf = async () => {
     if (!hash) { setMsg("No hash selected"); return; }
@@ -204,7 +207,15 @@ export default function ReportPanel({ hash, onNewAnalysis }) {
         {/* Show the detailed report */}
         {!loading && report && !showPdf && (
           <div>
+            {hash && (
+              <div className="mb-3">
+                <TagManager hash={hash} />
+              </div>
+            )}
             <HumanReport data={report} />
+            {hash && (
+              <AnnotationsPanel hash={hash} />
+            )}
           </div>
         )}
 

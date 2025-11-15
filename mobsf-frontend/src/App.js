@@ -5,6 +5,8 @@ import NavBar from './components/NavBar';
 import UploadCard from './components/UploadCard';
 import ScansCard from './components/ScansCard';
 import ReportPanel from './components/ReportPanel';
+import Login from './components/Login';
+import NotificationsSettings from './components/NotificationsSettings';
 import { Card } from 'react-bootstrap';
 import './App.css';
 
@@ -13,6 +15,11 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [currentView, setCurrentView] = useState('dashboard');
   const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+  const [token, setToken] = useState(() => localStorage.getItem('token') || null);
 
   const handleUploaded = (data) => {
     // data = { hash }
@@ -39,10 +46,28 @@ function App() {
     setAnalysisComplete(false);
   };
 
+  const handleLogin = (userData, authToken) => {
+    setUser(userData);
+    setToken(authToken);
+    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('token', authToken);
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
+  };
+
+
+  // Check if login is required for current view
+  const requiresAuth = currentView === 'settings' && (currentView.includes('scheduled') || currentView.includes('notifications'));
+
   return (
     <ThemeProvider>
       <div className="app-container">
-        <NavBar onNavigate={handleNavigation} />
+        <NavBar onNavigate={handleNavigation} user={user} onLogout={handleLogout} />
         <div className="container-fluid px-md-4">
           {currentView === 'dashboard' && (
             <div className="row g-3">
@@ -63,17 +88,22 @@ function App() {
           {currentView === 'reports' && (
             <div className="row">
               <div className="col-12">
-                <div className="mb-4">
+                <div className="mb-4 d-flex justify-content-between align-items-center">
+                  <div>
                   <h3 style={{ fontWeight: 700, fontSize: '1.8rem', marginBottom: '0.5rem' }}>
                     <span style={{ fontSize: '2rem', marginRight: '12px' }}>📁</span>
-                    All Reports
+                      All Reports
                   </h3>
-                  <p className="text-muted">Browse and access all your previous analysis reports</p>
+                    <p className="text-muted">
+                      Browse and access all your previous analysis reports
+                    </p>
+                  </div>
                 </div>
                 {!selected ? (
                   <ScansCard 
                     onSelect={(s) => { 
-                      setSelected({ hash: s.MD5 || s.hash || s.md5 }); 
+                      const hash = s.MD5 || s.hash || s.md5;
+                      setSelected({ hash }); 
                     }} 
                     refreshKey={refreshKey} 
                   />
@@ -104,10 +134,15 @@ function App() {
             </div>
           )}
           
+          
           {currentView === 'settings' && (
             <div className="row">
               <div className="col-12 col-md-10 col-lg-8 mx-auto">
-                <Card className="shadow-lg p-4" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>
+                {!user ? (
+                  <Login onLogin={handleLogin} />
+                ) : (
+                  <>
+                    <Card className="shadow-lg p-4 mb-4" style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>
                   <div className="mb-4">
                     <h3 style={{ fontWeight: 700, fontSize: '1.8rem', marginBottom: '0.5rem' }}>
                       <span style={{ fontSize: '2rem', marginRight: '12px' }}>⚙️</span>
@@ -173,6 +208,10 @@ function App() {
                     </div>
                   </div>
                 </Card>
+
+                    <NotificationsSettings />
+                  </>
+                )}
               </div>
             </div>
           )}

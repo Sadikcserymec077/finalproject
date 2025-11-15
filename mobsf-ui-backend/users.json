@@ -1,0 +1,12 @@
+{
+  "users": [
+    {
+      "username": "admin",
+      "password": "$2a$10$u/VonuDgwLEJvHG4nqB9ReiPgxkaZHDZLB9nrq9fV0JQkpRz/M0T2",
+      "email": "admin@example.com",
+      "role": "admin",
+      "createdAt": "2025-11-15T13:44:29.405Z"
+    }
+  ],
+  "lastUpdated": "2025-11-15T13:44:29.406Z"
+}

@@ -29,7 +29,7 @@ export default function UploadCard({ onUploaded }) {
     if (selectedFiles.length > 0) {
       setFiles(selectedFiles);
       setFile(selectedFiles[0]); // Keep first file for backward compatibility
-      setMessage('');
+    setMessage('');
     }
   };
 
@@ -134,23 +134,23 @@ export default function UploadCard({ onUploaded }) {
     
     // Single file upload (backward compatible)
     if (files.length === 1) {
-      setStatus('uploading'); setProgress(2); setMessage('Uploading...');
-      try {
+    setStatus('uploading'); setProgress(2); setMessage('Uploading...');
+    try {
         const res = await uploadFile(files[0], (pe) => setProgress(Math.round((pe.loaded * 100) / pe.total)));
-        const h = res.data.hash || res.data.MD5 || res.data.md5;
-        setHash(h);
-        setStatus('uploaded');
-        setMessage('Uploaded — hash: ' + h);
-        setStatus('scanning');
-        await triggerScan(h);
-        setMessage('MobSF scan triggered — polling logs...');
-        startPolling(h);
-      } catch (err) {
-        console.error('upload error:', err?.response?.status, err?.response?.data || err?.message || err);
-        setStatus('error');
-        const errMsg = err?.response?.data?.error || err?.message || 'Upload failed';
-        setMessage(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
-      }
+      const h = res.data.hash || res.data.MD5 || res.data.md5;
+      setHash(h);
+      setStatus('uploaded');
+      setMessage('Uploaded — hash: ' + h);
+      setStatus('scanning');
+      await triggerScan(h);
+      setMessage('MobSF scan triggered — polling logs...');
+      startPolling(h);
+    } catch (err) {
+      console.error('upload error:', err?.response?.status, err?.response?.data || err?.message || err);
+      setStatus('error');
+      const errMsg = err?.response?.data?.error || err?.message || 'Upload failed';
+      setMessage(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+    }
       return;
     }
 
@@ -323,14 +323,14 @@ export default function UploadCard({ onUploaded }) {
           {files.length > 0 && (
             <div className="mt-3">
               {files.length === 1 ? (
-                <Badge bg="info" style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem' }}>
+              <Badge bg="info" style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem' }}>
                   📄 {files[0].name}
                 </Badge>
               ) : (
                 <div>
                   <Badge bg="info" style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', marginBottom: '8px' }}>
                     📦 {files.length} files selected
-                  </Badge>
+              </Badge>
                   <div style={{ marginTop: '8px', maxHeight: '150px', overflowY: 'auto' }}>
                     {files.map((f, idx) => (
                       <div key={idx} className="small text-muted" style={{ padding: '4px 0' }}>

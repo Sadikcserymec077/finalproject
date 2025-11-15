@@ -2,7 +2,7 @@ import React, { useContext } from 'react';
 import { Navbar, Container, Nav, Badge, Button } from 'react-bootstrap';
 import { useTheme } from '../ThemeContext';
 
-export default function NavBar({ onNavigate }) {
+export default function NavBar({ onNavigate, user, onLogout }) {
   const { theme, toggleTheme } = useTheme();
   
   return (
@@ -136,11 +136,26 @@ export default function NavBar({ onNavigate }) {
                 ✓ MobSF
               </Badge>
             </div>
+            {user && (
+              <div className="d-flex align-items-center me-3">
+                <Badge 
+                  bg="info"
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '20px',
+                    fontSize: '0.75rem',
+                    fontWeight: 600
+                  }}
+                >
+                  👤 {user.username}
+                </Badge>
+              </div>
+            )}
             <Button 
               variant="outline-light" 
               size="sm" 
               onClick={toggleTheme}
-              className="d-flex align-items-center"
+              className="d-flex align-items-center me-2"
               style={{
                 borderWidth: '2px',
                 borderRadius: '20px',
@@ -149,20 +164,27 @@ export default function NavBar({ onNavigate }) {
                 transition: 'all 0.3s ease',
                 backdropFilter: 'blur(10px)'
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
-                e.currentTarget.style.transform = 'scale(1.05)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
             >
               <span style={{ fontSize: '1.2rem', marginRight: '6px' }}>
                 {theme === 'light' ? '🌙' : '☀️'}
               </span>
               <span>{theme === 'light' ? 'Dark' : 'Light'}</span>
             </Button>
+            {user && onLogout && (
+              <Button 
+                variant="outline-light" 
+                size="sm" 
+                onClick={onLogout}
+                style={{
+                  borderWidth: '2px',
+                  borderRadius: '20px',
+                  padding: '6px 16px',
+                  fontWeight: 600
+                }}
+              >
+                🚪 Logout
+              </Button>
+            )}
           </Nav>
         </Navbar.Collapse>
       </Container>
