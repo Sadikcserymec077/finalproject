@@ -305,40 +305,74 @@ app.get('/api/report_json/save', async (req, res) => {
     const { hash } = req.query;
     if (!hash) return res.status(422).json({ error: 'hash required' });
 
-    const destPath = path.join(JSON_DIR, `${hash}.json`);
-    if (fs.existsSync(destPath)) {
-      const data = JSON.parse(fs.readFileSync(destPath, 'utf8'));
-      // Ensure security score is calculated if missing
-      if (!data.securityScore && !data.security_score) {
-        const securityScore = calculateSecurityScore(data);
-        data.securityScore = securityScore;
-        data.security_score = securityScore;
-        // Update the file
-        fs.writeFileSync(destPath, JSON.stringify(data, null, 2), 'utf8');
-      } else {
-        // Recalculate score to ensure it's accurate with new logic
-        const securityScore = calculateSecurityScore(data);
-        data.securityScore = securityScore;
-        data.security_score = securityScore;
-        // Update the file
-        fs.writeFileSync(destPath, JSON.stringify(data, null, 2), 'utf8');
-      }
-      return res.json({ cached: true, path: `/reports/json/${hash}`, data });
+    // Ensure JSON_DIR exists
+    if (!fs.existsSync(JSON_DIR)) {
+      console.log(`Creating JSON_DIR: ${JSON_DIR}`);
+      fs.mkdirSync(JSON_DIR, { recursive: true });
     }
 
-    const dataPayload = new URLSearchParams(); dataPayload.append('hash', hash);
-    const resp = await axios.post(`${MOBSF_URL}/api/v1/report_json`, dataPayload.toString(), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...mobHeaders() },
-    });
+    const destPath = path.join(JSON_DIR, `${hash}.json`);
+    let reportData;
+    let wasCached = false;
+    
+    if (fs.existsSync(destPath)) {
+      reportData = JSON.parse(fs.readFileSync(destPath, 'utf8'));
+      wasCached = true;
+      console.log(`Using cached report for ${hash}`);
+    } else {
+      // Fetch from MobSF
+      console.log(`Fetching report from MobSF for hash: ${hash}`);
+      const dataPayload = new URLSearchParams(); 
+      dataPayload.append('hash', hash);
+      const resp = await axios.post(`${MOBSF_URL}/api/v1/report_json`, dataPayload.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...mobHeaders() },
+        timeout: 30000
+      });
+      reportData = resp.data;
+      console.log(`Fetched report from MobSF for ${hash} (has data: ${!!reportData})`);
+    }
+
+    if (!reportData) {
+      return res.status(404).json({ error: 'Report data not found' });
+    }
+
+    // Ensure timestamp is set (for recent scans display)
+    if (!reportData.timestamp && !reportData.TIMESTAMP && !reportData.scan_date) {
+      reportData.timestamp = new Date().toISOString();
+      reportData.TIMESTAMP = reportData.timestamp;
+    }
 
     // Calculate and add security score to the report using comprehensive calculation
-    const securityScore = calculateSecurityScore(resp.data);
-    resp.data.securityScore = securityScore;
-    resp.data.security_score = securityScore; // Also store with underscore for compatibility
+    const securityScore = calculateSecurityScore(reportData);
+    reportData.securityScore = securityScore;
+    reportData.security_score = securityScore; // Also store with underscore for compatibility
 
-    fs.writeFileSync(destPath, JSON.stringify(resp.data, null, 2), 'utf8');
-    res.json({ cached: false, path: `/reports/json/${hash}`, data: resp.data });
+    // Always save/update the file to ensure it's in the JSON_DIR for recent scans
+    try {
+      fs.writeFileSync(destPath, JSON.stringify(reportData, null, 2), 'utf8');
+      console.log(`✅ Successfully saved report to ${destPath}`);
+      
+      // Verify file was written
+      if (fs.existsSync(destPath)) {
+        const stat = fs.statSync(destPath);
+        console.log(`✅ File verified: ${destPath} (${stat.size} bytes, modified: ${stat.mtime.toISOString()})`);
+      } else {
+        console.error(`❌ File was not created: ${destPath}`);
+      }
+    } catch (writeErr) {
+      console.error(`❌ Error writing file ${destPath}:`, writeErr.message);
+      throw writeErr;
+    }
+    
+    // Auto-save PDF report in background (don't block response)
+    savePdfReportAsync(hash).catch(err => {
+      console.warn(`Failed to auto-save PDF for ${hash}:`, err.message);
+    });
+    
+    res.json({ cached: wasCached, path: `/reports/json/${hash}`, data: reportData });
   } catch (err) {
+    console.error(`❌ Error saving report for ${req.query.hash}:`, err.message);
+    console.error('Error stack:', err.stack);
     sendProxyError(res, err);
   }
 });
@@ -505,6 +539,58 @@ app.get('/api/download_pdf/save', async (req, res) => {
   }
 });
 
+// Helper function to save PDF asynchronously (non-blocking)
+async function savePdfReportAsync(hash) {
+  try {
+    // Ensure PDF_DIR exists
+    if (!fs.existsSync(PDF_DIR)) {
+      fs.mkdirSync(PDF_DIR, { recursive: true });
+    }
+
+    const destPath = path.join(PDF_DIR, `${hash}.pdf`);
+    
+    // Skip if PDF already exists
+    if (fs.existsSync(destPath)) {
+      console.log(`PDF already exists for ${hash}, skipping generation`);
+      return;
+    }
+
+    console.log(`Auto-generating PDF for ${hash}...`);
+    
+    // Fetch PDF from MobSF
+    const data = new URLSearchParams();
+    data.append('hash', hash);
+    
+    const resp = await axios.post(`${MOBSF_URL}/api/v1/download_pdf`, data.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...mobHeaders() },
+      responseType: 'arraybuffer',
+      timeout: 60000, // 60 second timeout
+    });
+
+    if (!resp.data || resp.data.length === 0) {
+      console.warn(`No PDF data received for ${hash}`);
+      return;
+    }
+
+    // Verify it's actually a PDF
+    const buffer = Buffer.from(resp.data);
+    const isPdf = buffer.length > 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46;
+    
+    if (!isPdf) {
+      console.warn(`Invalid PDF response for ${hash} (might be an error message)`);
+      return;
+    }
+
+    // Save PDF to disk
+    fs.writeFileSync(destPath, buffer, 'binary');
+    const stat = fs.statSync(destPath);
+    console.log(`✅ Auto-saved PDF: ${destPath} (${stat.size} bytes)`);
+  } catch (err) {
+    // Don't throw - this is a background operation
+    console.warn(`Failed to auto-save PDF for ${hash}:`, err.message);
+  }
+}
+
 // ✅ 8. Serve static saved reports
 app.use('/reports/json', express.static(JSON_DIR));
 app.use('/reports/pdf', express.static(PDF_DIR));
@@ -557,54 +643,119 @@ app.get('/api/scans', async (req, res) => {
     let mobsfScans = [];
     try {
       const url = `${MOBSF_URL}/api/v1/scans?page=${page}&page_size=${pageSize}`;
-    const resp = await axios.get(url, { headers: mobHeaders() });
+      const resp = await axios.get(url, { headers: mobHeaders() });
       mobsfScans = resp.data.content || [];
+      console.log(`Loaded ${mobsfScans.length} scans from MobSF`);
     } catch (err) {
       console.warn('MobSF scans fetch failed, using saved files only:', err.message);
     }
     
-    // Also load from saved JSON files (persistence)
-    const jsonFiles = fs.readdirSync(JSON_DIR).filter(f => 
-      f.endsWith('.json') && !f.includes('_sonar') && !f.includes('_unified')
-    );
+    // Also load from saved JSON files (persistence) - ALWAYS include these
+    let jsonFiles = [];
+    try {
+      if (!fs.existsSync(JSON_DIR)) {
+        console.warn(`JSON_DIR does not exist: ${JSON_DIR}, creating it...`);
+        fs.mkdirSync(JSON_DIR, { recursive: true });
+      }
+      
+      jsonFiles = fs.readdirSync(JSON_DIR).filter(f => 
+        f.endsWith('.json') && !f.includes('_sonar') && !f.includes('_unified')
+      );
+      console.log(`Found ${jsonFiles.length} saved JSON files in ${JSON_DIR}`);
+      if (jsonFiles.length > 0) {
+        console.log(`Sample files: ${jsonFiles.slice(0, 3).join(', ')}`);
+      }
+    } catch (err) {
+      console.error(`Error reading JSON_DIR ${JSON_DIR}:`, err.message);
+      console.error('Error stack:', err.stack);
+    }
     
     const savedScans = [];
+    console.log(`📂 Processing ${jsonFiles.length} saved JSON files...`);
     jsonFiles.forEach(fn => {
       try {
         const hash = path.basename(fn, '.json');
-        const reportData = JSON.parse(fs.readFileSync(path.join(JSON_DIR, fn), 'utf8'));
-        const stat = fs.statSync(path.join(JSON_DIR, fn));
+        const filePath = path.join(JSON_DIR, fn);
+        const reportData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        const stat = fs.statSync(filePath);
         
-        // Check if this scan already exists in MobSF results
-        const existsInMobsf = mobsfScans.some(s => (s.MD5 || s.hash || s.md5) === hash);
+        // Always create scan entry from saved file (prioritize saved files)
+        // Use report timestamp if available, otherwise use file mtime
+        const reportTimestamp = reportData.timestamp || reportData.TIMESTAMP || reportData.scan_date || stat.mtime.toISOString();
         
-        if (!existsInMobsf) {
-          // Create scan entry from saved file
-          savedScans.push({
-            MD5: hash,
-            hash: hash,
-            md5: hash,
-            APP_NAME: reportData.app_name || reportData.APP_NAME || 'Unknown',
-            PACKAGE_NAME: reportData.package_name || reportData.PACKAGE_NAME || '',
-            VERSION_NAME: reportData.version_name || reportData.VERSION_NAME || '',
-            SCAN_TYPE: 'static',
-            TIMESTAMP: stat.mtime.toISOString(),
-            FILE_NAME: reportData.file_name || reportData.FILE_NAME || fn,
-            _fromSaved: true
-          });
-        }
+        // Check if PDF exists for this scan
+        const pdfPath = path.join(PDF_DIR, `${hash}.pdf`);
+        const hasPdf = fs.existsSync(pdfPath);
+        
+        const scanEntry = {
+          MD5: hash,
+          hash: hash,
+          md5: hash,
+          APP_NAME: reportData.app_name || reportData.APP_NAME || reportData.file_name || reportData.FILE_NAME || 'Unknown',
+          PACKAGE_NAME: reportData.package_name || reportData.PACKAGE_NAME || '',
+          VERSION_NAME: reportData.version_name || reportData.VERSION_NAME || '',
+          SCAN_TYPE: 'static',
+          TIMESTAMP: reportTimestamp,
+          FILE_NAME: reportData.file_name || reportData.FILE_NAME || fn,
+          _fromSaved: true,
+          pdfPath: hasPdf ? `/reports/pdf/${hash}.pdf` : null,
+          hasPdf: hasPdf
+        };
+        
+        console.log(`✅ Loaded saved scan: ${scanEntry.APP_NAME} (${hash})`);
+        savedScans.push(scanEntry);
       } catch (e) {
-        console.error(`Error loading saved scan ${fn}:`, e.message);
+        console.error(`❌ Error loading saved scan ${fn}:`, e.message);
+        console.error(`❌ Error stack:`, e.stack);
+      }
+    });
+    console.log(`✅ Successfully loaded ${savedScans.length} saved scans`);
+    
+    // Merge MobSF scans and saved scans, prioritize saved scans (they have more complete data)
+    // Use a Map to deduplicate by hash, with saved scans taking precedence
+    const scanMap = new Map();
+    
+    // First add MobSF scans
+    mobsfScans.forEach(scan => {
+      const hash = scan.MD5 || scan.hash || scan.md5;
+      if (hash) {
+        scanMap.set(hash, scan);
       }
     });
     
-    // Merge MobSF scans and saved scans, remove duplicates
-    const allScans = [...mobsfScans];
+    // Then add/override with saved scans (they have more complete data)
     savedScans.forEach(saved => {
-      if (!allScans.some(s => (s.MD5 || s.hash || s.md5) === saved.MD5)) {
-        allScans.push(saved);
+      const hash = saved.MD5 || saved.hash || saved.md5;
+      if (hash) {
+        // Merge saved scan data with MobSF data if it exists
+        const existing = scanMap.get(hash);
+        if (existing) {
+          // Merge, but prioritize saved scan data
+          scanMap.set(hash, { ...existing, ...saved });
+        } else {
+          scanMap.set(hash, saved);
+        }
       }
     });
+    
+    // Convert map to array
+    const allScans = Array.from(scanMap.values());
+    
+    console.log(`📊 Total scans after merge: ${allScans.length} (MobSF: ${mobsfScans.length}, Saved: ${savedScans.length})`);
+    if (savedScans.length > 0) {
+      console.log(`📁 Saved scans details:`, savedScans.map(s => ({
+        hash: s.MD5,
+        APP_NAME: s.APP_NAME,
+        TIMESTAMP: s.TIMESTAMP,
+        _fromSaved: s._fromSaved
+      })));
+    }
+    if (allScans.length === 0 && savedScans.length > 0) {
+      console.warn(`⚠️ WARNING: Saved scans exist (${savedScans.length}) but merge resulted in 0 scans!`);
+      console.warn(`⚠️ This might indicate a merge issue. Returning saved scans directly.`);
+      // If merge failed but we have saved scans, return them directly
+      allScans.push(...savedScans);
+    }
     
     // Sort by timestamp (newest first)
     allScans.sort((a, b) => {
@@ -652,10 +803,16 @@ app.get('/api/scans', async (req, res) => {
         console.error(`Error calculating security score for ${hash}:`, e.message);
       }
       
+      // Check if PDF exists for this scan
+      const pdfFilePath = path.join(PDF_DIR, `${hash}.pdf`);
+      const hasPdf = fs.existsSync(pdfFilePath);
+      
       // Override any existing securityScore from MobSF with our calculated one
       return {
         ...scan,
-        securityScore: securityScore !== null ? securityScore : (scan.securityScore || null)
+        securityScore: securityScore !== null ? securityScore : (scan.securityScore || null),
+        pdfPath: hasPdf ? `/reports/pdf/${hash}.pdf` : null,
+        hasPdf: hasPdf
       };
     }));
     
@@ -664,15 +821,58 @@ app.get('/api/scans', async (req, res) => {
     const end = start + pageSize;
     const paginated = enrichedScans.slice(start, end);
     
-    res.json({
+    console.log(`📤 Returning ${paginated.length} scans (page ${page}, total: ${enrichedScans.length})`);
+    if (paginated.length > 0) {
+      console.log(`📋 Sample scan being returned:`, {
+        APP_NAME: paginated[0].APP_NAME,
+        MD5: paginated[0].MD5,
+        hash: paginated[0].hash,
+        TIMESTAMP: paginated[0].TIMESTAMP,
+        hasSecurityScore: paginated[0].securityScore !== null && paginated[0].securityScore !== undefined
+      });
+    } else {
+      console.warn(`⚠️ WARNING: Returning 0 scans! Total enriched: ${enrichedScans.length}`);
+    }
+    
+    const response = {
       content: paginated,
-      totalElements: allScans.length,
-      totalPages: Math.ceil(allScans.length / pageSize),
+      totalElements: enrichedScans.length,
+      totalPages: Math.ceil(enrichedScans.length / pageSize),
       page: page,
       pageSize: pageSize
-    });
+    };
+    
+    console.log(`📤 Response payload size: ${JSON.stringify(response).length} bytes`);
+    res.json(response);
   } catch (err) {
     sendProxyError(res, err);
+  }
+});
+
+// ✅ Debug endpoint to check saved reports
+app.get('/api/debug/reports', (req, res) => {
+  try {
+    const exists = fs.existsSync(JSON_DIR);
+    const files = exists ? fs.readdirSync(JSON_DIR).filter(f => f.endsWith('.json') && !f.includes('_sonar') && !f.includes('_unified')) : [];
+    const fileDetails = files.map(fn => {
+      const filePath = path.join(JSON_DIR, fn);
+      const stat = fs.statSync(filePath);
+      return {
+        name: fn,
+        size: stat.size,
+        modified: stat.mtime.toISOString(),
+        hash: path.basename(fn, '.json')
+      };
+    });
+    
+    res.json({
+      jsonDir: JSON_DIR,
+      exists: exists,
+      fileCount: files.length,
+      files: fileDetails
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 

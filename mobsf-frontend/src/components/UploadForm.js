@@ -144,13 +144,23 @@ export default function UploadForm({ onUploadSuccess, onScanComplete, refreshSca
           // fetch/save the JSON via backend method (adjust endpoint if necessary)
           try {
             // GET /api/report_json/save?hash=<hash>
-            await axios.get(`${API_BASE}/api/report_json/save?hash=${theHash}`);
+            const saveResult = await axios.get(`${API_BASE}/api/report_json/save?hash=${theHash}`);
+            console.log("✅ Report saved:", saveResult.data);
             setMessage("Report saved.");
             setHash(theHash);
+            
+            // Delay to ensure file is written before refreshing
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
             if (typeof onScanComplete === "function") onScanComplete(theHash);
-            if (typeof refreshScans === "function") refreshScans();
+            if (typeof refreshScans === "function") {
+              // Additional delay before refresh
+              setTimeout(() => {
+                refreshScans();
+              }, 500);
+            }
           } catch (err) {
-            console.error("Failed to save JSON report:", err);
+            console.error("❌ Failed to save JSON report:", err);
             setMessage("Scan complete but failed to fetch report JSON (check backend).");
           }
         }

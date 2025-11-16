@@ -23,10 +23,18 @@ function App() {
 
   const handleUploaded = (data) => {
     // data = { hash }
+    console.log('handleUploaded called with:', data);
     setSelected({ hash: data.hash });
     setAnalysisComplete(true); // Show report section after upload
     // bump refreshKey to signal ScansCard to reload
-    setRefreshKey(k => k + 1);
+    // Add a small delay to ensure backend has saved the file
+    setTimeout(() => {
+      setRefreshKey(k => {
+        const newKey = k + 1;
+        console.log('Refreshing scans with key:', newKey);
+        return newKey;
+      });
+    }, 1500); // 1.5 second delay to ensure file is saved
   };
 
   const handleNavigation = (view) => {

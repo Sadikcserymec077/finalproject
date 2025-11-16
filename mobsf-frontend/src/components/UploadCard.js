@@ -59,13 +59,21 @@ export default function UploadCard({ onUploaded }) {
           
           // Save MobSF JSON
           try {
-            await saveJsonReport(h);
+            const saveResult = await saveJsonReport(h);
+            console.log(`✅ Saved JSON report for ${h}`, saveResult.data);
+            // Longer delay to ensure file is written and visible to filesystem
+            await new Promise(resolve => setTimeout(resolve, 1000));
           } catch (e) {
-            console.error('saveJsonReport error', e?.response?.data || e?.message || e);
+            console.error('❌ saveJsonReport error', e?.response?.data || e?.message || e);
           }
           
-          // Analysis complete
-          onUploaded && onUploaded({ hash: h });
+          // Analysis complete - trigger refresh after a short delay
+          if (onUploaded) {
+            // Small delay to ensure backend has processed the save
+            setTimeout(() => {
+              onUploaded({ hash: h });
+            }, 500);
+          }
           return;
         }
 
@@ -77,8 +85,18 @@ export default function UploadCard({ onUploaded }) {
             pollRef.current = null;
             setStatus('ready');
             setMessage('Scan complete.');
-            try { await saveJsonReport(h); } catch(e){ console.error('saveJsonReport error', e); }
-            onUploaded && onUploaded({ hash: h });
+            try { 
+              await saveJsonReport(h);
+              console.log(`✅ Saved JSON report for ${h}`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch(e){ 
+              console.error('❌ saveJsonReport error', e); 
+            }
+            if (onUploaded) {
+              setTimeout(() => {
+                onUploaded({ hash: h });
+              }, 500);
+            }
             return;
           }
         } catch (probeErr) {

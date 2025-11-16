@@ -13,31 +13,100 @@ export default function ScansCard({ onSelect, refreshKey }) {
   async function fetchScans() {
     setLoading(true);
     try {
+      console.log('🔍 Fetching scans from API...');
+      console.log('🔍 API_BASE should be:', process.env.REACT_APP_API_BASE || 'http://localhost:3001');
       const r = await getScans(1, 100);
-      // Enrich with metadata - security score is already calculated by backend
-      const enriched = await Promise.all((r.data.content || []).map(async (scan) => {
+      console.log('📦 Full API response:', JSON.stringify(r, null, 2));
+      console.log('📦 Scans API response:', r.data);
+      console.log('📦 Response structure:', {
+        hasContent: !!r.data.content,
+        contentLength: r.data.content?.length,
+        totalElements: r.data.totalElements,
+        page: r.data.page,
+        pageSize: r.data.pageSize,
+        fullResponse: r.data
+      });
+      const scansList = r.data.content || [];
+      console.log(`✅ Received ${scansList.length} scans from API`);
+      
+      if (scansList.length === 0) {
+        console.warn('⚠️ WARNING: API returned 0 scans!');
+        console.warn('⚠️ Response data:', r.data);
+        console.warn('⚠️ This might indicate:');
+        console.warn('   1. Backend is not returning scans correctly');
+        console.warn('   2. JSON files are not being loaded');
+        console.warn('   3. There are no saved scans');
+      }
+      
+      if (scansList.length > 0) {
+        console.log('📋 Sample scan:', {
+          APP_NAME: scansList[0].APP_NAME,
+          MD5: scansList[0].MD5,
+          hash: scansList[0].hash,
+          TIMESTAMP: scansList[0].TIMESTAMP,
+          _fromSaved: scansList[0]._fromSaved
+        });
+      }
+      
+      // First, set scans immediately with default metadata (don't wait for metadata enrichment)
+      // This ensures scans appear even if metadata API is slow or fails
+      const scansWithDefaults = scansList.map(scan => ({
+        ...scan,
+        hash: scan.MD5 || scan.hash || scan.md5,
+        metadata: { tags: [], favorite: false, archived: false },
+        securityScore: scan.securityScore
+      }));
+      
+      console.log(`📊 Setting scans immediately (${scansWithDefaults.length} scans)`);
+      setScans(scansWithDefaults);
+      console.log('✅ Scans state updated immediately, scans.length:', scansWithDefaults.length);
+      
+      // Then enrich with metadata in the background (non-blocking)
+      // This updates the scans with metadata as it becomes available
+      console.log('🔄 Starting background metadata enrichment...');
+      const enrichedPromises = scansList.map(async (scan) => {
         const hash = scan.MD5 || scan.hash || scan.md5;
+        if (!hash) {
+          return scan;
+        }
         try {
           const metaRes = await getReportMetadata(hash);
           return { 
             ...scan, 
             hash, 
-            metadata: metaRes.data,
-            securityScore: scan.securityScore // Already calculated by backend
+            metadata: metaRes.data || { tags: [], favorite: false, archived: false },
+            securityScore: scan.securityScore
           };
-        } catch {
-          return { 
-            ...scan, 
-            hash, 
-            metadata: { tags: [], favorite: false, archived: false },
-            securityScore: scan.securityScore // Already calculated by backend
-          };
+        } catch (metaErr) {
+          // Silently fail - we already have the scan with default metadata
+          return scan;
         }
-      }));
-      setScans(enriched);
+      });
+      
+      // Update scans with metadata as it becomes available (non-blocking)
+      Promise.allSettled(enrichedPromises).then(results => {
+        const enriched = results.map((result, idx) => {
+          if (result.status === 'fulfilled') {
+            return result.value;
+          } else {
+            return scansList[idx];
+          }
+        });
+        console.log(`✨ Background metadata enrichment complete (${results.filter(r => r.status === 'fulfilled').length}/${results.length} succeeded)`);
+        // Only update if we got some metadata
+        if (results.some(r => r.status === 'fulfilled')) {
+          setScans(enriched);
+        }
+      });
     } catch (e) {
-      console.error(e);
-    } finally { setLoading(false); }
+      console.error('❌ Error fetching scans:', e);
+      console.error('❌ Error details:', e.response?.data || e.message);
+      console.error('❌ Error stack:', e.stack);
+      setScans([]); // Set empty array on error
+    } finally { 
+      setLoading(false);
+      console.log('🏁 Fetch complete, loading set to false');
+    }
   }
 
 
@@ -94,7 +163,10 @@ export default function ScansCard({ onSelect, refreshKey }) {
           <Button 
             variant="link" 
             size="sm" 
-                onClick={() => { fetchScans(); }} 
+                onClick={async () => { 
+                  console.log('Manual refresh triggered');
+                  await fetchScans(); 
+                }} 
             disabled={loading}
             style={{ 
               color: 'var(--text-primary)',
@@ -110,14 +182,39 @@ export default function ScansCard({ onSelect, refreshKey }) {
             </div>
         </div>
         <ListGroup variant="flush">
-          {scans.length === 0 && (
+          {scans.length === 0 && !loading && (
             <div className="text-center p-4 text-muted">
               <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📭</div>
               <div>No recent scans</div>
               <small>Upload an APK to get started</small>
             </div>
           )}
-          {scans.map((s, idx) => (
+          {loading && scans.length === 0 && (
+            <div className="text-center p-4 text-muted">
+              <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
+              <div>Loading scans...</div>
+            </div>
+          )}
+          {scans.length > 0 && (
+            <div className="small text-muted mb-2 px-2" style={{ fontSize: '0.85rem' }}>
+              Showing {scans.length} scan{scans.length !== 1 ? 's' : ''}
+            </div>
+          )}
+          {scans.map((s, idx) => {
+            if (!s) {
+              console.warn(`⚠️ Skipping null/undefined scan at index ${idx}`);
+              return null;
+            }
+            if (!s.APP_NAME && !s.FILE_NAME) {
+              console.warn(`⚠️ Skipping scan without name at index ${idx}:`, {
+                MD5: s.MD5,
+                hash: s.hash,
+                keys: Object.keys(s)
+              });
+              return null;
+            }
+            console.log(`✅ Rendering scan ${idx}:`, s.APP_NAME || s.FILE_NAME, s.MD5 || s.hash);
+            return (
             <ListGroup.Item 
               key={s.MD5 || s.id} 
               className="d-flex justify-content-between align-items-start" 
@@ -174,6 +271,19 @@ export default function ScansCard({ onSelect, refreshKey }) {
                 </div>
               <div className="text-end d-flex flex-column align-items-end gap-2">
                 <div className="d-flex gap-1">
+                  {s.hasPdf && s.pdfPath && (
+                    <Button
+                      size="sm"
+                      variant="outline-primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(s.pdfPath, '_blank');
+                      }}
+                      title="Download PDF"
+                    >
+                      📄
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant={s.metadata?.favorite ? 'warning' : 'outline-secondary'}
@@ -231,7 +341,8 @@ export default function ScansCard({ onSelect, refreshKey }) {
                 </Badge>
               </div>
             </ListGroup.Item>
-          ))}
+            );
+          })}
         </ListGroup>
       </Card.Body>
     </Card>
