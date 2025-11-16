@@ -48,9 +48,6 @@ export default function HumanReport({ data }) {
   const versionName = data.version_name || data.VERSION_NAME || "-";
   const targetSdk = data.target_sdk || data.TargetSdkVersion || "-";
   const minSdk = data.min_sdk || data.MinSdkVersion || "-";
-  const md5 = data.hash || data.MD5 || data.md5 || "(n/a)";
-  const sha1 = data.sha1 || data.SHA1 || "-";
-  const sha256 = data.sha256 || data.SHA256 || "-";
 
   // -------------------------
   // Extract findings from ALL sections
@@ -173,18 +170,6 @@ export default function HumanReport({ data }) {
       });
     }
   });
-
-  // -------------------------
-  // Counts by severity (from ALL findings)
-  // -------------------------
-  const counts = allFindings.reduce((acc, f) => {
-    const s = (f.severity || "info").toLowerCase();
-    if (s.includes("high") || s.includes("critical")) acc.high++;
-    else if (s.includes("warn") || s.includes("medium") || s === "warning") acc.medium++;
-    else if (s === "secure" || s === "good") acc.secure++;
-    else acc.info++;
-    return acc;
-  }, { high: 0, medium: 0, info: 0, secure: 0 });
 
   // Get counts from summaries (more accurate - matches PDF)
   const certSummary = certAnalysis.certificate_summary || {};
