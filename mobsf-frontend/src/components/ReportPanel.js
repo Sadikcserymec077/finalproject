@@ -61,7 +61,18 @@ export default function ReportPanel({ hash, onNewAnalysis }) {
       setShowPdf(true);
       setMsg("PDF preview loaded below.");
     } catch (e) {
-      setMsg("PDF fetch failed: " + (e?.response?.data || e?.message));
+      // Extract error message from response
+      let errorMsg = "PDF fetch failed";
+      if (e?.response?.data) {
+        if (typeof e.response.data === 'object') {
+          errorMsg = e.response.data.message || e.response.data.error || errorMsg;
+        } else if (typeof e.response.data === 'string') {
+          errorMsg = e.response.data;
+        }
+      } else if (e?.message) {
+        errorMsg = e.message;
+      }
+      setMsg(errorMsg);
     } finally { 
       setLoading(false); 
     }
@@ -70,6 +81,7 @@ export default function ReportPanel({ hash, onNewAnalysis }) {
 
   const handleDownloadPdf = async () => {
     if (!hash) { setMsg("No hash selected"); return; }
+    setLoading(true);
     setMsg("Preparing PDF for download...");
     try {
       const r = await savePdfReport(hash);
@@ -84,7 +96,20 @@ export default function ReportPanel({ hash, onNewAnalysis }) {
       URL.revokeObjectURL(url);
       setMsg("Download started.");
     } catch (e) {
-      setMsg("Download failed: " + (e?.response?.data || e?.message));
+      // Extract error message from response
+      let errorMsg = "Download failed";
+      if (e?.response?.data) {
+        if (typeof e.response.data === 'object') {
+          errorMsg = e.response.data.message || e.response.data.error || errorMsg;
+        } else if (typeof e.response.data === 'string') {
+          errorMsg = e.response.data;
+        }
+      } else if (e?.message) {
+        errorMsg = e.message;
+      }
+      setMsg(errorMsg);
+    } finally {
+      setLoading(false);
     }
   };
 

@@ -194,16 +194,10 @@ export default function HumanReport({ data }) {
 
   // Combine summary counts from all sections (matches PDF calculation)
   const totalHigh = (certSummary.high || 0) + (manifestSummary.high || 0) + (codeSummary.high || 0) + (networkSummary.high || 0);
-  const totalMedium = (certSummary.warning || 0) + (manifestSummary.warning || 0) + (codeSummary.warning || 0) + (networkSummary.warning || 0);
+  const totalWarning = (certSummary.warning || 0) + (manifestSummary.warning || 0) + (codeSummary.warning || 0) + (networkSummary.warning || 0);
+  const totalGood = (certSummary.secure || 0) + (manifestSummary.secure || 0) + (codeSummary.secure || 0) + (networkSummary.secure || 0) +
+    (certSummary.good || 0) + (manifestSummary.good || 0) + (codeSummary.good || 0) + (networkSummary.good || 0);
   const totalInfo = (certSummary.info || 0) + (manifestSummary.info || 0) + (codeSummary.info || 0) + (networkSummary.info || 0);
-
-  // Use summary counts (matches PDF report)
-  const finalCounts = {
-    high: totalHigh,
-    medium: totalMedium,
-    info: totalInfo,
-    secure: codeSummary.secure || 0
-  };
 
   // -------------------------
   // Dangerous permissions detection
@@ -220,25 +214,79 @@ export default function HumanReport({ data }) {
 
   const dangerousPermsCount = dangerousPerms.length;
 
+  // Use summary counts (matches PDF report)
+  const finalCounts = {
+    high: totalHigh,
+    medium: totalWarning, // Warning = medium in MobSF
+    info: totalInfo,
+    secure: totalGood
+  };
+
   // -------------------------
-  // Score calculation (matches PDF calculation - based on ALL findings)
-  // - weights: high=10, medium/warning=5, info=1, dangerous-permission=8
+  // Score calculation - Balanced approach matching backend
+  // Uses weighted penalties with normalization to avoid all scores being capped at 10
+  // Includes dangerous permissions as high severity items
   // First check if score is already calculated in the data
   // -------------------------
   let score;
   if (data.security_score !== undefined && data.security_score !== null) {
-    // Use pre-calculated score if available
+    // Use pre-calculated score if available (from backend)
     score = data.security_score;
   } else if (data.securityScore !== undefined && data.securityScore !== null) {
     // Alternative field name
     score = data.securityScore;
   } else {
-    // Calculate from findings
-  const totalFindings = finalCounts.high + finalCounts.medium + finalCounts.info;
-  const overallItems = totalFindings + dangerousPermsCount;
-  const weightedPenalty = (finalCounts.high * 10) + (finalCounts.medium * 5) + (finalCounts.info * 1) + (dangerousPermsCount * 8);
-  const maxPenalty = Math.max(overallItems * 10, 1);
-    score = Math.max(0, Math.round(100 - (weightedPenalty / maxPenalty) * 100));
+    // Calculate using balanced weighted penalty approach (matches backend)
+    // Dangerous permissions count as high severity
+    const effectiveHigh = totalHigh + dangerousPermsCount;
+    const weightedPenalty = (effectiveHigh * 10) + (totalWarning * 5) + (totalInfo * 1) - (totalGood * 3);
+    
+    // Use same calculation as backend
+    const totalItems = effectiveHigh + totalWarning + totalInfo;
+    if (totalItems === 0 && totalGood > 0) {
+      score = 100;
+    } else if (totalItems === 0) {
+      score = 100;
+    } else {
+      const baseScore = 100 - weightedPenalty;
+      score = baseScore;
+      
+      // If score is very low, scale it up proportionally
+      if (score < 20) {
+        const issueRatio = totalItems / Math.max(totalItems + 10, 1);
+        score = Math.max(20, 100 - (issueRatio * 80));
+      }
+      
+      // Apply reasonable caps based on dangerous permissions
+      if (dangerousPermsCount >= 10) {
+        score = Math.min(score, 35);
+      } else if (dangerousPermsCount >= 5) {
+        score = Math.min(score, 55);
+      } else if (dangerousPermsCount >= 3) {
+        score = Math.min(score, 70);
+      }
+      
+      // Additional penalty for very high severity counts
+      if (effectiveHigh >= 15) {
+        score = Math.max(0, score - 25);
+      } else if (effectiveHigh >= 10) {
+        score = Math.max(0, score - 15);
+      } else if (effectiveHigh >= 5) {
+        score = Math.max(0, score - 5);
+      }
+      
+      // Ensure minimum score based on total issues
+      if (totalItems <= 2) {
+        score = Math.max(score, 70);
+      } else if (totalItems <= 5) {
+        score = Math.max(score, 50);
+      } else if (totalItems <= 10) {
+        score = Math.max(score, 30);
+      }
+    }
+    
+    // Cap between 0 and 100
+    score = Math.max(0, Math.min(100, Math.round(score)));
   }
 
   // -------------------------
@@ -332,7 +380,8 @@ export default function HumanReport({ data }) {
                   overlay={
                     <BSTooltip>
                       <strong>How is the score calculated?</strong><br />
-                      Based on all findings: High (10pts), Medium (5pts), Info (1pt), Dangerous permissions (8pts each).<br />
+                      Uses weighted penalties: High (10pts), Warning (5pts), Info (1pt), Dangerous permissions (counted as High).<br />
+                      Good/Secure findings provide bonus points. Scores are normalized to avoid all apps showing the same score.<br />
                       Higher score = Safer app. 100 = No issues detected.
                     </BSTooltip>
                   }
@@ -360,13 +409,15 @@ export default function HumanReport({ data }) {
                 </div>
 
                 <div className="mt-3" style={{ fontSize: 13, color: "white", fontWeight: 500 }}>
-                  <div>High: <strong>{finalCounts.high}</strong> &nbsp; Medium: <strong>{finalCounts.medium}</strong> &nbsp; Info: <strong>{finalCounts.info}</strong></div>
-                  <div className="mt-1">Dangerous perms: <strong>{dangerousPermsCount}</strong></div>
+                  <div>High: <strong>{finalCounts.high}</strong> &nbsp; Warning: <strong>{finalCounts.medium}</strong> &nbsp; Info: <strong>{finalCounts.info}</strong></div>
+                  {totalGood > 0 && <div className="mt-1">Good/Secure: <strong>{totalGood}</strong></div>}
+                  {dangerousPermsCount > 0 && <div className="mt-1">Dangerous perms: <strong>{dangerousPermsCount}</strong></div>}
                 </div>
                 
                 {/* Install Recommendation */}
                 <div className="mt-4">
-                  {score >= 70 ? (
+                  {/* Never show "Safe to Install" if there are 3+ dangerous permissions or 5+ high severity issues */}
+                  {(score >= 70 && dangerousPermsCount < 3 && totalHigh < 5) ? (
                     <Alert variant="success" style={{ 
                       background: 'rgba(40, 167, 69, 0.2)', 
                       border: '2px solid rgba(40, 167, 69, 0.5)',
@@ -382,7 +433,7 @@ export default function HumanReport({ data }) {
                         </div>
                       </div>
                     </Alert>
-                  ) : score >= 40 ? (
+                  ) : (score >= 40 && dangerousPermsCount < 5 && totalHigh < 8) ? (
                     <Alert variant="warning" style={{ 
                       background: 'rgba(255, 193, 7, 0.2)', 
                       border: '2px solid rgba(255, 193, 7, 0.5)',
@@ -394,7 +445,11 @@ export default function HumanReport({ data }) {
                         <span style={{ fontSize: '1.5rem', marginRight: '10px' }}>⚠️</span>
                         <div>
                           <strong>Install with Caution</strong>
-                          <div className="small mt-1">This app has moderate security issues. Review the findings before installing.</div>
+                          <div className="small mt-1">
+                            {dangerousPermsCount >= 3 
+                              ? `This app has ${dangerousPermsCount} dangerous permissions and moderate security issues. Review all findings carefully before installing.`
+                              : 'This app has moderate security issues. Review the findings before installing.'}
+                          </div>
                         </div>
                       </div>
                     </Alert>
@@ -410,7 +465,13 @@ export default function HumanReport({ data }) {
                         <span style={{ fontSize: '1.5rem', marginRight: '10px' }}>🚫</span>
                         <div>
                           <strong>Not Recommended to Install</strong>
-                          <div className="small mt-1">This app has significant security vulnerabilities. Avoid installing unless necessary.</div>
+                          <div className="small mt-1">
+                            {dangerousPermsCount >= 5 
+                              ? `This app has ${dangerousPermsCount} dangerous permissions and significant security vulnerabilities. Avoid installing unless absolutely necessary.`
+                              : totalHigh >= 8
+                              ? `This app has ${totalHigh} high severity security issues. Avoid installing unless absolutely necessary.`
+                              : 'This app has significant security vulnerabilities. Avoid installing unless necessary.'}
+                          </div>
                         </div>
                       </div>
                     </Alert>

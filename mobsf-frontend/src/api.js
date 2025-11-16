@@ -55,7 +55,49 @@ export const saveJsonReport = (hash) =>
 
 // Save & download PDF (returns blob)
 export const savePdfReport = (hash) =>
-  axios.get(`${API_BASE}/api/download_pdf/save`, { params: { hash }, responseType: 'blob' });
+  axios.get(`${API_BASE}/api/download_pdf/save`, { 
+    params: { hash }, 
+    responseType: 'blob',
+    validateStatus: function (status) {
+      // Accept both success (200) and error statuses to handle them properly
+      return status >= 200 && status < 500;
+    }
+  }).then(response => {
+    // Check if response is actually an error (JSON error message)
+    if (response.status >= 400) {
+      // When responseType is 'blob', error responses are also blobs
+      // Convert blob to text to parse JSON error message
+      return response.data.text().then(text => {
+        try {
+          const errorData = JSON.parse(text);
+          const error = new Error(errorData.message || errorData.error || 'PDF fetch failed');
+          error.response = { data: errorData, status: response.status };
+          throw error;
+        } catch (e) {
+          // If not JSON, throw with status
+          const error = new Error(text || `PDF fetch failed with status ${response.status}`);
+          error.response = { data: { message: text }, status: response.status };
+          throw error;
+        }
+      });
+    }
+    return response;
+  }).catch(error => {
+    // Handle network errors and other axios errors
+    if (error.response && error.response.data && error.response.data instanceof Blob) {
+      // If error response is a blob, try to parse it
+      return error.response.data.text().then(text => {
+        try {
+          const errorData = JSON.parse(text);
+          error.response.data = errorData;
+        } catch (e) {
+          error.response.data = { message: text || 'PDF fetch failed' };
+        }
+        throw error;
+      });
+    }
+    throw error;
+  });
 
 // List saved reports
 export const listSavedReports = () =>

@@ -179,9 +179,30 @@ app.get('/api/report_json', async (req, res) => {
 
     // Check cache first
     const cacheKey = `report_json_${hash}`;
-    const cached = cache.getFromCache(cacheKey);
+    let cached = cache.getFromCache(cacheKey);
     if (cached) {
+      // Recalculate security score to ensure it's up-to-date
+      const securityScore = calculateSecurityScore(cached);
+      cached.securityScore = securityScore;
+      cached.security_score = securityScore;
+      // Update cache with new score
+      cache.setCache(cacheKey, cached, 3600000);
       return res.json(cached);
+    }
+
+    // Check if we have a saved report file
+    const savedPath = path.join(JSON_DIR, `${hash}.json`);
+    if (fs.existsSync(savedPath)) {
+      const savedData = JSON.parse(fs.readFileSync(savedPath, 'utf8'));
+      // Recalculate security score
+      const securityScore = calculateSecurityScore(savedData);
+      savedData.securityScore = securityScore;
+      savedData.security_score = securityScore;
+      // Update the file
+      fs.writeFileSync(savedPath, JSON.stringify(savedData, null, 2), 'utf8');
+      // Cache it
+      cache.setCache(cacheKey, savedData, 3600000);
+      return res.json(savedData);
     }
 
     const data = new URLSearchParams();
@@ -191,6 +212,11 @@ app.get('/api/report_json', async (req, res) => {
     const resp = await axios.post(`${MOBSF_URL}/api/v1/report_json`, data.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...mobHeaders() },
     });
+    
+    // Calculate and add security score
+    const securityScore = calculateSecurityScore(resp.data);
+    resp.data.securityScore = securityScore;
+    resp.data.security_score = securityScore;
     
     // Cache for 1 hour
     cache.setCache(cacheKey, resp.data, 3600000);
@@ -206,13 +232,29 @@ app.get('/api/report_json/crucial', async (req, res) => {
     const { hash } = req.query;
     if (!hash) return res.status(422).json({ error: 'hash query param required' });
 
+    // Check if we have a saved report file first
+    const savedPath = path.join(JSON_DIR, `${hash}.json`);
+    let report;
+    if (fs.existsSync(savedPath)) {
+      report = JSON.parse(fs.readFileSync(savedPath, 'utf8'));
+      // Recalculate security score
+      const securityScore = calculateSecurityScore(report);
+      report.securityScore = securityScore;
+      report.security_score = securityScore;
+      // Update the file
+      fs.writeFileSync(savedPath, JSON.stringify(report, null, 2), 'utf8');
+    } else {
     const data = new URLSearchParams();
     data.append('hash', hash);
     const resp = await axios.post(`${MOBSF_URL}/api/v1/report_json`, data.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...mobHeaders() },
     });
-
-    const report = resp.data;
+      report = resp.data;
+      // Calculate and add security score
+      const securityScore = calculateSecurityScore(report);
+      report.securityScore = securityScore;
+      report.security_score = securityScore;
+    }
     const keywords = ['insecure', 'weak', 'hardcoded', 'exported', 'adb', 'root', 'sensitive', 'sql', 'crypto', 'ssl', 'http', 'plain', 'permission', 'dangerous', 'secret', 'keystore', 'iv', 'key'];
     const findings = [];
     function search(obj, path = []) {
@@ -268,16 +310,14 @@ app.get('/api/report_json/save', async (req, res) => {
       const data = JSON.parse(fs.readFileSync(destPath, 'utf8'));
       // Ensure security score is calculated if missing
       if (!data.securityScore && !data.security_score) {
-        const findings = data.manifest_analysis?.manifest_findings || [];
-        const weightedPenalty = findings.reduce((sum, f) => {
-          const sev = (f.severity || 'info').toLowerCase();
-          if (sev.includes('critical')) return sum + 20;
-          if (sev.includes('high')) return sum + 10;
-          if (sev.includes('medium')) return sum + 5;
-          if (sev.includes('low')) return sum + 2;
-          return sum + 1;
-        }, 0);
-        const securityScore = Math.max(0, Math.round(100 - (weightedPenalty / Math.max(findings.length * 20, 1)) * 100));
+        const securityScore = calculateSecurityScore(data);
+        data.securityScore = securityScore;
+        data.security_score = securityScore;
+        // Update the file
+        fs.writeFileSync(destPath, JSON.stringify(data, null, 2), 'utf8');
+      } else {
+        // Recalculate score to ensure it's accurate with new logic
+        const securityScore = calculateSecurityScore(data);
         data.securityScore = securityScore;
         data.security_score = securityScore;
         // Update the file
@@ -291,17 +331,8 @@ app.get('/api/report_json/save', async (req, res) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...mobHeaders() },
     });
 
-    // Calculate and add security score to the report
-    const findings = resp.data.manifest_analysis?.manifest_findings || [];
-    const weightedPenalty = findings.reduce((sum, f) => {
-      const sev = (f.severity || 'info').toLowerCase();
-      if (sev.includes('critical')) return sum + 20;
-      if (sev.includes('high')) return sum + 10;
-      if (sev.includes('medium')) return sum + 5;
-      if (sev.includes('low')) return sum + 2;
-      return sum + 1;
-    }, 0);
-    const securityScore = Math.max(0, Math.round(100 - (weightedPenalty / Math.max(findings.length * 20, 1)) * 100));
+    // Calculate and add security score to the report using comprehensive calculation
+    const securityScore = calculateSecurityScore(resp.data);
     resp.data.securityScore = securityScore;
     resp.data.security_score = securityScore; // Also store with underscore for compatibility
 
@@ -319,19 +350,158 @@ app.get('/api/download_pdf/save', async (req, res) => {
     if (!hash) return res.status(422).json({ error: 'hash required' });
 
     const destPath = path.join(PDF_DIR, `${hash}.pdf`);
-    if (fs.existsSync(destPath)) return res.sendFile(destPath);
+    if (fs.existsSync(destPath)) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${hash}.pdf"`);
+      return res.sendFile(destPath);
+    }
 
-    const data = new URLSearchParams(); data.append('hash', hash);
+    // First, verify the scan exists and has completed
+    try {
+      // Check if we have a JSON report (indicates scan completed)
+      const jsonPath = path.join(JSON_DIR, `${hash}.json`);
+      if (!fs.existsSync(jsonPath)) {
+        // Try to get JSON report from MobSF to verify scan exists
+        const jsonData = new URLSearchParams();
+        jsonData.append('hash', hash);
+        try {
+          await axios.post(`${MOBSF_URL}/api/v1/report_json`, jsonData.toString(), {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...mobHeaders() },
+            timeout: 10000,
+          });
+        } catch (jsonErr) {
+          if (jsonErr.response?.status === 404) {
+            return res.status(404).json({ 
+              error: 'Scan not found', 
+              message: 'No scan found for this hash. Please upload and scan the APK first.' 
+            });
+          }
+          // If JSON fetch fails, continue to try PDF anyway
+        }
+      }
+    } catch (verifyErr) {
+      // Continue to try PDF generation even if verification fails
+      console.warn('Scan verification warning:', verifyErr.message);
+    }
+
+    // Try to fetch/generate PDF from MobSF
+    // MobSF's download_pdf endpoint should generate the PDF on-demand if it doesn't exist
+    const data = new URLSearchParams(); 
+    data.append('hash', hash);
+    
+    try {
     const resp = await axios.post(`${MOBSF_URL}/api/v1/download_pdf`, data.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...mobHeaders() },
       responseType: 'arraybuffer',
-    });
+        timeout: 60000, // 60 second timeout (PDF generation can take time)
+      });
 
-    fs.writeFileSync(destPath, Buffer.from(resp.data), 'binary');
+      if (!resp.data || resp.data.length === 0) {
+        return res.status(404).json({ 
+          error: 'PDF not available', 
+          message: 'The PDF report could not be generated. The scan may still be in progress or the report data is incomplete.' 
+        });
+      }
+
+      // Verify it's actually a PDF (check for PDF magic bytes)
+      const buffer = Buffer.from(resp.data);
+      const isPdf = buffer.length > 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46;
+      
+      if (!isPdf) {
+        // Might be an error message, try to parse it
+        try {
+          const errorText = buffer.toString('utf8');
+          const errorJson = JSON.parse(errorText);
+          return res.status(404).json({ 
+            error: errorJson.error || 'PDF generation failed', 
+            message: errorJson.message || 'MobSF could not generate the PDF report for this scan.' 
+          });
+        } catch (e) {
+          return res.status(500).json({ 
+            error: 'Invalid PDF response', 
+            message: 'MobSF returned an invalid response. The PDF may not be available for this scan.' 
+          });
+        }
+      }
+
+      // Save PDF to disk
+      fs.writeFileSync(destPath, buffer, 'binary');
     res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${hash}.pdf"`);
     res.sendFile(destPath);
+    } catch (fetchErr) {
+      // Handle specific error cases
+      if (fetchErr.code === 'ECONNREFUSED' || fetchErr.code === 'ETIMEDOUT') {
+        return res.status(503).json({ 
+          error: 'MobSF service unavailable', 
+          message: 'Cannot connect to MobSF server. Please ensure MobSF is running at ' + MOBSF_URL 
+        });
+      }
+      
+      if (fetchErr.response) {
+        // MobSF returned an error
+        const status = fetchErr.response.status;
+        let errorMessage = 'The PDF report has not been generated for this scan.';
+        
+        // Try to extract error message from response
+        if (fetchErr.response.data) {
+          try {
+            if (Buffer.isBuffer(fetchErr.response.data)) {
+              const errorText = fetchErr.response.data.toString('utf8');
+              try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.message || errorJson.error || errorMessage;
+              } catch (e) {
+                errorMessage = errorText || errorMessage;
+              }
+            } else if (typeof fetchErr.response.data === 'string') {
+              errorMessage = fetchErr.response.data;
+            } else if (fetchErr.response.data.message) {
+              errorMessage = fetchErr.response.data.message;
+            } else if (fetchErr.response.data.error) {
+              errorMessage = fetchErr.response.data.error;
+            }
+          } catch (e) {
+            // Use default message
+          }
+        }
+        
+        if (status === 404) {
+          // Provide more helpful guidance for 404 errors
+          let helpfulMessage = errorMessage;
+          if (!helpfulMessage.includes('scan has completed')) {
+            helpfulMessage += ' Possible reasons:';
+            helpfulMessage += '\n1. The scan may still be in progress - wait a few moments and try again';
+            helpfulMessage += '\n2. MobSF PDF generation may not be configured (requires PDF generation dependencies)';
+            helpfulMessage += '\n3. The scan type may not support PDF generation';
+            helpfulMessage += '\n\nNote: You can still view the full report in JSON format.';
+          } else {
+            helpfulMessage += ' You may need to wait a few moments for the PDF to be generated, or check your MobSF configuration for PDF generation support.';
+          }
+          
+          return res.status(404).json({ 
+            error: 'PDF not found', 
+            message: helpfulMessage
+          });
+        }
+        return res.status(status).json({ 
+          error: 'PDF fetch failed', 
+          message: errorMessage || fetchErr.response.statusText || 'Failed to fetch PDF from MobSF' 
+        });
+      }
+      
+      // Network or other errors
+      return res.status(500).json({ 
+        error: 'PDF fetch failed', 
+        message: fetchErr.message || 'Network error while fetching PDF. Please check your connection and ensure MobSF is running.' 
+      });
+    }
   } catch (err) {
-    sendProxyError(res, err);
+    console.error('PDF download error:', err);
+    return res.status(500).json({ 
+      error: 'PDF download failed', 
+      message: err.message || 'An unexpected error occurred while processing the PDF request' 
+    });
   }
 });
 
@@ -342,13 +512,33 @@ app.use('/reports/pdf', express.static(PDF_DIR));
 // ✅ 9. List Saved Reports
 app.get('/api/reports', (req, res) => {
   try {
-    const jsonFiles = fs.readdirSync(JSON_DIR).filter(f => f.endsWith('.json'));
+    const jsonFiles = fs.readdirSync(JSON_DIR).filter(f => 
+      f.endsWith('.json') && !f.includes('_sonar') && !f.includes('_unified')
+    );
     const pdfFiles = fs.readdirSync(PDF_DIR).filter(f => f.endsWith('.pdf'));
     const reports = jsonFiles.map(fn => {
       const hash = path.basename(fn, '.json');
       const stat = fs.statSync(path.join(JSON_DIR, fn));
       const entry = { hash, jsonPath: `/reports/json/${hash}`, jsonUpdated: stat.mtime };
       if (pdfFiles.includes(`${hash}.pdf`)) entry.pdfPath = `/reports/pdf/${hash}`;
+      
+      // Include security score
+      try {
+        const reportData = JSON.parse(fs.readFileSync(path.join(JSON_DIR, fn), 'utf8'));
+        // Recalculate to ensure it's up-to-date
+        const securityScore = calculateSecurityScore(reportData);
+        entry.securityScore = securityScore;
+        entry.security_score = securityScore;
+        
+        // Update the file with new score
+        reportData.securityScore = securityScore;
+        reportData.security_score = securityScore;
+        fs.writeFileSync(path.join(JSON_DIR, fn), JSON.stringify(reportData, null, 2), 'utf8');
+      } catch (e) {
+        // If we can't read the file, just skip the score
+        console.error(`Error reading report ${fn}:`, e.message);
+      }
+      
       return entry;
     });
     res.json({ count: reports.length, reports });
@@ -424,34 +614,50 @@ app.get('/api/scans', async (req, res) => {
     });
     
     // Calculate security scores for all scans
-    const enrichedScans = allScans.map(scan => {
+    // Use Promise.all to handle async operations efficiently
+    const enrichedScans = await Promise.all(allScans.map(async (scan) => {
       const hash = scan.MD5 || scan.hash || scan.md5;
       let securityScore = null;
       
       try {
+        // First, try to get from saved JSON file
         const jsonPath = path.join(JSON_DIR, `${hash}.json`);
         if (fs.existsSync(jsonPath)) {
           const reportData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-          const findings = reportData.manifest_analysis?.manifest_findings || [];
-          const weightedPenalty = findings.reduce((sum, f) => {
-            const sev = (f.severity || 'info').toLowerCase();
-            if (sev.includes('critical')) return sum + 20;
-            if (sev.includes('high')) return sum + 10;
-            if (sev.includes('medium')) return sum + 5;
-            if (sev.includes('low')) return sum + 2;
-            return sum + 1;
-          }, 0);
-          securityScore = Math.max(0, Math.round(100 - (weightedPenalty / Math.max(findings.length * 20, 1)) * 100));
+          // Always recalculate to ensure it's up-to-date with new logic
+          securityScore = calculateSecurityScore(reportData);
+          // Update the stored score in the file
+          reportData.securityScore = securityScore;
+          reportData.security_score = securityScore;
+          fs.writeFileSync(jsonPath, JSON.stringify(reportData, null, 2), 'utf8');
+        } else {
+          // If no saved file, try to fetch from MobSF and calculate
+          // This ensures scores are calculated even for scans without saved reports
+          try {
+            const dataPayload = new URLSearchParams();
+            dataPayload.append('hash', hash);
+            const resp = await axios.post(`${MOBSF_URL}/api/v1/report_json`, dataPayload.toString(), {
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...mobHeaders() },
+            });
+            if (resp.data) {
+              securityScore = calculateSecurityScore(resp.data);
+            }
+          } catch (fetchErr) {
+            // If we can't fetch the report, leave score as null
+            // This is expected for scans that haven't completed yet
+          }
         }
       } catch (e) {
         // Score calculation failed, leave as null
+        console.error(`Error calculating security score for ${hash}:`, e.message);
       }
       
+      // Override any existing securityScore from MobSF with our calculated one
       return {
         ...scan,
-        securityScore
+        securityScore: securityScore !== null ? securityScore : (scan.securityScore || null)
       };
-    });
+    }));
     
     // Paginate
     const start = (page - 1) * pageSize;
@@ -694,8 +900,11 @@ app.get('/api/unified_report', async (req, res) => {
 
     unifiedReport.summary.totalIssues = unifiedReport.findings.length;
 
-    // Calculate and store security score
-    const securityScore = calculateSecurityScore(unifiedReport.summary);
+    // Calculate and store security score using full MobSF report data (if available)
+    // This ensures dangerous permissions and all sections are included
+    const securityScore = reports.mobsf 
+      ? calculateSecurityScore(reports.mobsf) 
+      : calculateSecurityScore(unifiedReport.summary);
     unifiedReport.securityScore = securityScore;
     unifiedReport.security_score = securityScore; // Also store with underscore for compatibility
 
@@ -766,16 +975,7 @@ app.get('/api/reports/search', async (req, res) => {
       // Calculate security score if report exists
       let securityScore = null;
       if (reportData) {
-        const findings = reportData.manifest_analysis?.manifest_findings || [];
-        const weightedPenalty = findings.reduce((sum, f) => {
-          const sev = (f.severity || 'info').toLowerCase();
-          if (sev.includes('critical')) return sum + 20;
-          if (sev.includes('high')) return sum + 10;
-          if (sev.includes('medium')) return sum + 5;
-          if (sev.includes('low')) return sum + 2;
-          return sum + 1;
-        }, 0);
-        securityScore = Math.max(0, Math.round(100 - (weightedPenalty / Math.max(findings.length * 20, 1)) * 100));
+        securityScore = calculateSecurityScore(reportData);
       }
       
       return {
@@ -1202,9 +1402,9 @@ app.get('/api/reports/compare', async (req, res) => {
         })
       },
       scoreChange: {
-        report1: calculateSecurityScore(report1.summary),
-        report2: calculateSecurityScore(report2.summary),
-        improvement: calculateSecurityScore(report2.summary) - calculateSecurityScore(report1.summary)
+        report1: calculateSecurityScore(report1.rawReports?.mobsf || report1.summary),
+        report2: calculateSecurityScore(report2.rawReports?.mobsf || report2.summary),
+        improvement: calculateSecurityScore(report2.rawReports?.mobsf || report2.summary) - calculateSecurityScore(report1.rawReports?.mobsf || report1.summary)
       }
     };
     
@@ -1214,11 +1414,166 @@ app.get('/api/reports/compare', async (req, res) => {
   }
 });
 
-function calculateSecurityScore(summary) {
-  const weightedPenalty = (summary.critical * 20) + (summary.high * 10) + 
-    (summary.medium * 5) + (summary.low * 2) + (summary.info * 1);
-  const maxPenalty = Math.max(summary.totalIssues * 20, 1);
-  return Math.max(0, Math.round(100 - (weightedPenalty / maxPenalty) * 100));
+/**
+ * Security score calculation - Balanced approach
+ * Uses weighted penalties with normalization to avoid all scores being capped at 10
+ * Includes dangerous permissions as high severity items
+ */
+function calculateSecurityScore(reportData) {
+  // If reportData is a summary object (old format), convert it
+  if (reportData && reportData.totalIssues !== undefined && !reportData.manifest_analysis) {
+    // Old format - just summary
+    const summary = reportData;
+    const highCount = (summary.high || 0) + (summary.critical || 0);
+    const warningCount = (summary.warning || 0) + (summary.medium || 0);
+    const goodCount = summary.secure || summary.good || 0;
+    const infoCount = summary.info || 0;
+    
+    // Use same balanced calculation as new format
+    const weightedPenalty = (highCount * 10) + (warningCount * 5) + (infoCount * 1) - (goodCount * 3);
+    const totalItems = highCount + warningCount + infoCount;
+    
+    if (totalItems === 0 && goodCount > 0) {
+      return 100;
+    }
+    if (totalItems === 0) {
+      return 100;
+    }
+    
+    const baseScore = 100 - weightedPenalty;
+    let score = baseScore;
+    
+    // If score is very low, scale it up proportionally
+    if (score < 20) {
+      const issueRatio = totalItems / Math.max(totalItems + 10, 1);
+      score = Math.max(20, 100 - (issueRatio * 80));
+    }
+    
+    // Additional penalty for very high severity counts
+    if (highCount >= 15) {
+      score = Math.max(0, score - 25);
+    } else if (highCount >= 10) {
+      score = Math.max(0, score - 15);
+    } else if (highCount >= 5) {
+      score = Math.max(0, score - 5);
+    }
+    
+    // Ensure minimum score based on total issues
+    if (totalItems <= 2) {
+      score = Math.max(score, 70);
+    } else if (totalItems <= 5) {
+      score = Math.max(score, 50);
+    } else if (totalItems <= 10) {
+      score = Math.max(score, 30);
+    }
+    
+    // Cap between 0 and 100
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    return score;
+  }
+
+  // New format - full report data
+  if (!reportData) return 0;
+
+  // Extract findings from all sections
+  const certAnalysis = reportData.certificate_analysis || {};
+  const manifestAnalysis = reportData.manifest_analysis || reportData.Manifest || reportData.manifest || {};
+  const codeAnalysis = reportData.code_analysis || {};
+  const networkSecurity = reportData.network_security || {};
+
+  // Get summary counts from each section
+  const certSummary = certAnalysis.certificate_summary || {};
+  const manifestSummary = manifestAnalysis.manifest_summary || {};
+  const codeSummary = codeAnalysis.summary || {};
+  const networkSummary = networkSecurity.network_summary || {};
+
+  // Combine counts
+  const totalHigh = (certSummary.high || 0) + (manifestSummary.high || 0) + 
+    (codeSummary.high || 0) + (networkSummary.high || 0);
+  const totalWarning = (certSummary.warning || 0) + (manifestSummary.warning || 0) + 
+    (codeSummary.warning || 0) + (networkSummary.warning || 0);
+  const totalInfo = (certSummary.info || 0) + (manifestSummary.info || 0) + 
+    (codeSummary.info || 0) + (networkSummary.info || 0);
+  const totalGood = (certSummary.secure || 0) + (manifestSummary.secure || 0) + 
+    (codeSummary.secure || 0) + (networkSummary.secure || 0) +
+    (certSummary.good || 0) + (manifestSummary.good || 0) + 
+    (codeSummary.good || 0) + (networkSummary.good || 0);
+
+  // Count dangerous permissions and add to high severity
+  const permsObj = reportData.permissions || reportData.Permission || reportData.manifest_permissions || {};
+  const dangerousPerms = Object.entries(permsObj).filter(([k, v]) => {
+    if (!v) return false;
+    const vv = typeof v === "string" ? v : (v.status || v.level || v.risk || v.description || "");
+    return /(dangerous|danger|privileged)/i.test(vv) ||
+      /(WRITE|RECORD|CALL|SMS|LOCATION|CAMERA|STORAGE|CONTACTS|RECORD_AUDIO|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|SYSTEM_ALERT_WINDOW|GET_ACCOUNTS|AUTHENTICATE_ACCOUNTS|REQUEST_INSTALL_PACKAGES)/i.test(k);
+  });
+  const dangerousPermsCount = dangerousPerms.length;
+
+  // Calculate score using weighted penalty approach (more balanced)
+  // Weights: high=10, warning=5, info=1, dangerous-permission counts as high, good=-3 (bonus)
+  const effectiveHigh = totalHigh + dangerousPermsCount; // Dangerous perms count as high
+  const weightedPenalty = (effectiveHigh * 10) + (totalWarning * 5) + (totalInfo * 1) - (totalGood * 3);
+  
+  // Use a more forgiving normalization that doesn't cap everything at 10
+  // Base score calculation: start from 100 and subtract penalties proportionally
+  const totalItems = effectiveHigh + totalWarning + totalInfo;
+  if (totalItems === 0 && totalGood > 0) {
+    // Only good findings - high score
+    return 100;
+  }
+  
+  if (totalItems === 0) {
+    // No findings at all
+    return 100;
+  }
+  
+  // Calculate base score: 100 minus penalties, but use a scale that's more forgiving
+  // Instead of normalizing to max possible, use a fixed scale
+  const baseScore = 100 - weightedPenalty;
+  
+  // Apply scaling factor to make scores more distributed
+  // This prevents all scores from being very low
+  let score = baseScore;
+  
+  // If score is negative or very low, scale it up proportionally
+  if (score < 20) {
+    // For very low scores, use a more forgiving calculation
+    // Scale based on ratio of issues to a reasonable baseline
+    const issueRatio = totalItems / Math.max(totalItems + 10, 1); // Add buffer
+    score = Math.max(20, 100 - (issueRatio * 80)); // Scale between 20-100
+  }
+  
+  // Apply reasonable caps based on dangerous permissions (but not too harsh)
+  if (dangerousPermsCount >= 10) {
+    score = Math.min(score, 35);
+  } else if (dangerousPermsCount >= 5) {
+    score = Math.min(score, 55);
+  } else if (dangerousPermsCount >= 3) {
+    score = Math.min(score, 70);
+  }
+  
+  // Additional penalty for very high severity counts (but less harsh)
+  if (effectiveHigh >= 15) {
+    score = Math.max(0, score - 25);
+  } else if (effectiveHigh >= 10) {
+    score = Math.max(0, score - 15);
+  } else if (effectiveHigh >= 5) {
+    score = Math.max(0, score - 5);
+  }
+  
+  // Ensure minimum score based on total issues (more forgiving)
+  if (totalItems <= 2) {
+    score = Math.max(score, 70); // Apps with very few issues should score well
+  } else if (totalItems <= 5) {
+    score = Math.max(score, 50); // Apps with few issues
+  } else if (totalItems <= 10) {
+    score = Math.max(score, 30); // Apps with moderate issues
+  }
+  
+  // Cap between 0 and 100
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  return score;
 }
 
 // ✅ 24. Analytics Dashboard (with caching)
@@ -1270,15 +1625,8 @@ app.get('/api/analytics/dashboard', async (req, res) => {
           stats.topVulnerabilities[title] = (stats.topVulnerabilities[title] || 0) + 1;
         });
         
-        // Calculate score
-        const score = calculateSecurityScore({
-          critical: stats.severityBreakdown.critical,
-          high: stats.severityBreakdown.high,
-          medium: stats.severityBreakdown.medium,
-          low: stats.severityBreakdown.low,
-          info: stats.severityBreakdown.info,
-          totalIssues: findings.length
-        });
+        // Calculate score using full report data (includes dangerous permissions)
+        const score = calculateSecurityScore(reportData);
         scores.push(score);
         totalScore += score;
         
@@ -1664,16 +2012,8 @@ async function notifyOnScanComplete(hash, reportData) {
       (f.severity || '').toLowerCase().includes('critical')
     );
     
-    // Calculate score
-    const weightedPenalty = findings.reduce((sum, f) => {
-      const sev = (f.severity || 'info').toLowerCase();
-      if (sev.includes('critical')) return sum + 20;
-      if (sev.includes('high')) return sum + 10;
-      if (sev.includes('medium')) return sum + 5;
-      if (sev.includes('low')) return sum + 2;
-      return sum + 1;
-    }, 0);
-    const score = Math.max(0, Math.round(100 - (weightedPenalty / Math.max(findings.length * 20, 1)) * 100));
+    // Calculate score using comprehensive calculation
+    const score = calculateSecurityScore(reportData);
     
     // Notify scan complete
     await notifications.notifyScanComplete(
@@ -1703,5 +2043,5 @@ const PORT = (process.env.PORT && process.env.PORT !== '4000' && process.env.POR
   ? parseInt(process.env.PORT) 
   : 3001;
 app.listen(PORT, () => {
-  console.log(`✅ Backend proxy running on http://localhost:${PORT}`);
+  console.log(` Backend proxy running on http://localhost:${PORT}`);
 });

@@ -55,11 +55,109 @@ export default function DetailedReport({ data }) {
   // Check tool modes (real vs simulated)
   const sonarMode = rawReports?.sonar?.mode || 'unknown';
 
-  // Calculate overall security score
-  const totalIssues = summary.totalIssues || 0;
-  const weightedPenalty = (summary.critical * 20) + (summary.high * 10) + (summary.medium * 5) + (summary.low * 2) + (summary.info * 1);
-  const maxPenalty = Math.max(totalIssues * 20, 1);
-  const securityScore = Math.max(0, Math.round(100 - (weightedPenalty / maxPenalty) * 100));
+  // Calculate overall security score using comprehensive method
+  // First check if score is already calculated in the data
+  let securityScore;
+  if (data.security_score !== undefined && data.security_score !== null) {
+    securityScore = data.security_score;
+  } else if (data.securityScore !== undefined && data.securityScore !== null) {
+    securityScore = data.securityScore;
+  } else if (rawReports?.mobsf) {
+    // Calculate from full MobSF report data (includes dangerous permissions)
+    const mobsfData = rawReports.mobsf;
+    
+    // Extract findings from all sections
+    const certAnalysis = mobsfData.certificate_analysis || {};
+    const manifestAnalysis = mobsfData.manifest_analysis || mobsfData.Manifest || mobsfData.manifest || {};
+    const codeAnalysis = mobsfData.code_analysis || {};
+    const networkSecurity = mobsfData.network_security || {};
+
+    // Get summary counts from each section
+    const certSummary = certAnalysis.certificate_summary || {};
+    const manifestSummary = manifestAnalysis.manifest_summary || {};
+    const codeSummary = codeAnalysis.summary || {};
+    const networkSummary = networkSecurity.network_summary || {};
+
+    // Combine counts (matches PDF calculation)
+    const totalHigh = (certSummary.high || 0) + (manifestSummary.high || 0) + 
+      (codeSummary.high || 0) + (networkSummary.high || 0);
+    const totalWarning = (certSummary.warning || 0) + (manifestSummary.warning || 0) + 
+      (codeSummary.warning || 0) + (networkSummary.warning || 0);
+    const totalGood = (certSummary.secure || 0) + (manifestSummary.secure || 0) + 
+      (codeSummary.secure || 0) + (networkSummary.secure || 0) +
+      (certSummary.good || 0) + (manifestSummary.good || 0) + 
+      (codeSummary.good || 0) + (networkSummary.good || 0);
+
+    // Calculate using balanced weighted penalty approach (matches backend)
+    // Count dangerous permissions
+    const permsObj = mobsfData.permissions || mobsfData.Permission || mobsfData.manifest_permissions || {};
+    const dangerousPerms = Object.entries(permsObj).filter(([k, v]) => {
+      if (!v) return false;
+      const vv = typeof v === "string" ? v : (v.status || v.level || v.risk || v.description || "");
+      return /(dangerous|danger|privileged)/i.test(vv) ||
+        /(WRITE|RECORD|CALL|SMS|LOCATION|CAMERA|STORAGE|CONTACTS|RECORD_AUDIO|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|SYSTEM_ALERT_WINDOW|GET_ACCOUNTS|AUTHENTICATE_ACCOUNTS|REQUEST_INSTALL_PACKAGES)/i.test(k);
+    });
+    const dangerousPermsCount = dangerousPerms.length;
+    
+    const effectiveHigh = totalHigh + dangerousPermsCount;
+    const totalInfo = (certSummary.info || 0) + (manifestSummary.info || 0) + 
+      (codeSummary.info || 0) + (networkSummary.info || 0);
+    const weightedPenalty = (effectiveHigh * 10) + (totalWarning * 5) + (totalInfo * 1) - (totalGood * 3);
+    
+    const totalItems = effectiveHigh + totalWarning + totalInfo;
+    if (totalItems === 0 && totalGood > 0) {
+      securityScore = 100;
+    } else if (totalItems === 0) {
+      securityScore = 100;
+    } else {
+      const baseScore = 100 - weightedPenalty;
+      securityScore = baseScore;
+      
+      // If score is very low, scale it up proportionally
+      if (securityScore < 20) {
+        const issueRatio = totalItems / Math.max(totalItems + 10, 1);
+        securityScore = Math.max(20, 100 - (issueRatio * 80));
+      }
+      
+      if (dangerousPermsCount >= 10) {
+        securityScore = Math.min(securityScore, 35);
+      } else if (dangerousPermsCount >= 5) {
+        securityScore = Math.min(securityScore, 55);
+      } else if (dangerousPermsCount >= 3) {
+        securityScore = Math.min(securityScore, 70);
+      }
+      
+      if (effectiveHigh >= 15) {
+        securityScore = Math.max(0, securityScore - 25);
+      } else if (effectiveHigh >= 10) {
+        securityScore = Math.max(0, securityScore - 15);
+      } else if (effectiveHigh >= 5) {
+        securityScore = Math.max(0, securityScore - 5);
+      }
+      
+      // Ensure minimum score based on total issues
+      if (totalItems <= 2) {
+        securityScore = Math.max(securityScore, 70);
+      } else if (totalItems <= 5) {
+        securityScore = Math.max(securityScore, 50);
+      } else if (totalItems <= 10) {
+        securityScore = Math.max(securityScore, 30);
+      }
+    }
+    
+    securityScore = Math.max(0, Math.min(100, Math.round(securityScore)));
+  } else {
+    // Fallback: Use summary data with balanced calculation
+    const highCount = (summary.high || 0) + (summary.critical || 0);
+    const warningCount = (summary.warning || 0) + (summary.medium || 0);
+    const goodCount = summary.secure || summary.good || 0;
+    const infoCount = summary.info || 0;
+    const weightedPenalty = (highCount * 10) + (warningCount * 5) + (infoCount * 1) - (goodCount * 3);
+    const totalItems = highCount + warningCount + infoCount;
+    const maxPenalty = Math.max(totalItems * 10, 1);
+    securityScore = Math.max(0, Math.round(100 - (weightedPenalty / maxPenalty) * 100));
+    securityScore = Math.max(0, Math.min(100, securityScore));
+  }
 
   // Prepare chart data
   const severityData = [
