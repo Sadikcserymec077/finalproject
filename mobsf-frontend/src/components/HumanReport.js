@@ -133,7 +133,10 @@ export default function HumanReport({ data }) {
   });
 
   // 5. Binary Analysis Findings (extract high/warning severity items)
+  // NOTE: Binary analysis is NOT added to allFindings to exclude it from summary
+  // It will be displayed separately in the category view only
   const binaryAnalysis = data.binary_analysis || [];
+  const binaryFindings = [];
   binaryAnalysis.forEach(binary => {
     if (binary && binary.name) {
       // Check each security property
@@ -142,7 +145,7 @@ export default function HumanReport({ data }) {
         if (binary[check] && binary[check].severity) {
           const sev = binary[check].severity.toLowerCase();
           if (sev === "high" || sev === "warning") {
-            allFindings.push({
+            binaryFindings.push({
               category: "Binary Analysis",
               title: `${check.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} - ${binary.name}`,
               severity: sev,
@@ -267,6 +270,11 @@ export default function HumanReport({ data }) {
     acc[f.category].push(f);
     return acc;
   }, {});
+  
+  // Add binary findings separately to category view (not in summary)
+  if (binaryFindings.length > 0) {
+    findingsByCategory["Binary Analysis"] = binaryFindings;
+  }
 
   const toggleSection = (section) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));

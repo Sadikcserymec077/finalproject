@@ -13,7 +13,7 @@ import { Button, Spinner, ProgressBar } from "react-bootstrap";
  * - refreshScans()         -> optional callback to refresh scan list in parent
  *
  * Requirements:
- * - REACT_APP_API_BASE in .env.local (e.g. http://localhost:4000)
+ * - REACT_APP_API_BASE in .env.local (e.g. http://localhost:3001)
  *
  * Notes:
  * - Upload endpoint: POST ${API_BASE}/api/upload (multipart/form-data)
@@ -23,7 +23,7 @@ import { Button, Spinner, ProgressBar } from "react-bootstrap";
  *   (adjust these if your backend uses different endpoints)
  */
 
-const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:4000";
+const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:3001";
 
 export default function UploadForm({ onUploadSuccess, onScanComplete, refreshScans }) {
   const [selectedFiles, setSelectedFiles] = useState(null);

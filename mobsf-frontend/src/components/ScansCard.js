@@ -172,7 +172,6 @@ export default function ScansCard({ onSelect, refreshKey }) {
                     )}
                   </div>
                 </div>
-              </div>
               <div className="text-end d-flex flex-column align-items-end gap-2">
                 <div className="d-flex gap-1">
                   <Button

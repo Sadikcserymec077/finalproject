@@ -1697,7 +1697,11 @@ async function notifyOnScanComplete(hash, reportData) {
 }
 
 // ✅ Start Server
-const PORT = process.env.PORT || 4000;
+// Use 3001 as default to avoid Windows port permission issues
+// Override with PORT env var if needed (but avoid 4000, 4001)
+const PORT = (process.env.PORT && process.env.PORT !== '4000' && process.env.PORT !== '4001') 
+  ? parseInt(process.env.PORT) 
+  : 3001;
 app.listen(PORT, () => {
-  console.log(`✅ Backend proxy running on port ${PORT}`);
+  console.log(`✅ Backend proxy running on http://localhost:${PORT}`);
 });

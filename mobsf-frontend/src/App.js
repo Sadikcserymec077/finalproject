@@ -92,7 +92,7 @@ function App() {
                   <div>
                   <h3 style={{ fontWeight: 700, fontSize: '1.8rem', marginBottom: '0.5rem' }}>
                     <span style={{ fontSize: '2rem', marginRight: '12px' }}>📁</span>
-                      All Reports
+                    All Reports
                   </h3>
                     <p className="text-muted">
                       Browse and access all your previous analysis reports
@@ -170,7 +170,7 @@ function App() {
                           borderRadius: '6px',
                           fontSize: '0.9rem'
                         }}>
-                          http://localhost:4000
+                          http://localhost:3001
                         </code>
                       </div>
                       <div>
