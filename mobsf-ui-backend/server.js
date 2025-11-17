@@ -406,74 +406,15 @@ app.post('/api/scan_logs', async (req, res) => {
 // ✅ 6. Save & Serve JSON Reports
 app.get('/api/report_json/save', async (req, res) => {
   try {
-    const { hash } = req.query;
+    const { hash, force } = req.query;
     if (!hash) return res.status(422).json({ error: 'hash required' });
 
-    // Ensure JSON_DIR exists
-    if (!fs.existsSync(JSON_DIR)) {
-      console.log(`Creating JSON_DIR: ${JSON_DIR}`);
-      fs.mkdirSync(JSON_DIR, { recursive: true });
-    }
-
-    const destPath = path.join(JSON_DIR, `${hash}.json`);
-    let reportData;
-    let wasCached = false;
-    
-    if (fs.existsSync(destPath)) {
-      reportData = JSON.parse(fs.readFileSync(destPath, 'utf8'));
-      wasCached = true;
-      console.log(`Using cached report for ${hash}`);
-    } else {
-      // Fetch from MobSF
-      console.log(`Fetching report from MobSF for hash: ${hash}`);
-      const dataPayload = new URLSearchParams(); 
-      dataPayload.append('hash', hash);
-      const resp = await axios.post(`${MOBSF_URL}/api/v1/report_json`, dataPayload.toString(), {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...mobHeaders() },
-        timeout: 30000
-      });
-      reportData = resp.data;
-      console.log(`Fetched report from MobSF for ${hash} (has data: ${!!reportData})`);
-    }
-
-    if (!reportData) {
-      return res.status(404).json({ error: 'Report data not found' });
-    }
-
-    // Ensure timestamp is set (for recent scans display)
-    if (!reportData.timestamp && !reportData.TIMESTAMP && !reportData.scan_date) {
-      reportData.timestamp = new Date().toISOString();
-      reportData.TIMESTAMP = reportData.timestamp;
-    }
-
-    // Calculate and add security score to the report using comprehensive calculation
-    const securityScore = calculateSecurityScore(reportData);
-    reportData.securityScore = securityScore;
-    reportData.security_score = securityScore; // Also store with underscore for compatibility
-
-    // Always save/update the file to ensure it's in the JSON_DIR for recent scans
-    try {
-      fs.writeFileSync(destPath, JSON.stringify(reportData, null, 2), 'utf8');
-      console.log(`✅ Successfully saved report to ${destPath}`);
-      
-      // Verify file was written
-      if (fs.existsSync(destPath)) {
-        const stat = fs.statSync(destPath);
-        console.log(`✅ File verified: ${destPath} (${stat.size} bytes, modified: ${stat.mtime.toISOString()})`);
-      } else {
-        console.error(`❌ File was not created: ${destPath}`);
-      }
-    } catch (writeErr) {
-      console.error(`❌ Error writing file ${destPath}:`, writeErr.message);
-      throw writeErr;
-    }
-    
-    // Auto-save PDF report in background (don't block response)
-    savePdfReportAsync(hash).catch(err => {
-      console.warn(`Failed to auto-save PDF for ${hash}:`, err.message);
+    const result = await fetchAndSaveJsonReport(hash, {
+      force: force === '1' || force === 'true',
+      triggerPdf: true
     });
     
-    res.json({ cached: wasCached, path: `/reports/json/${hash}`, data: reportData });
+    res.json({ cached: result.cached, path: `/reports/json/${hash}`, data: result.data });
   } catch (err) {
     console.error(`❌ Error saving report for ${req.query.hash}:`, err.message);
     console.error('Error stack:', err.stack);
@@ -695,6 +636,60 @@ async function savePdfReportAsync(hash) {
   }
 }
 
+async function fetchAndSaveJsonReport(hash, { force = false, triggerPdf = false } = {}) {
+  if (!hash) {
+    throw new Error('hash required');
+  }
+
+  // Ensure JSON_DIR exists
+  if (!fs.existsSync(JSON_DIR)) {
+    console.log(`Creating JSON_DIR: ${JSON_DIR}`);
+    fs.mkdirSync(JSON_DIR, { recursive: true });
+  }
+
+  const destPath = path.join(JSON_DIR, `${hash}.json`);
+  let reportData;
+  let cached = false;
+
+  if (!force && fs.existsSync(destPath)) {
+    reportData = JSON.parse(fs.readFileSync(destPath, 'utf8'));
+    cached = true;
+    console.log(`Using cached report for ${hash}`);
+  } else {
+    console.log(`Fetching report from MobSF for hash: ${hash}`);
+    const dataPayload = new URLSearchParams();
+    dataPayload.append('hash', hash);
+    const resp = await axios.post(`${MOBSF_URL}/api/v1/report_json`, dataPayload.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...mobHeaders() },
+      timeout: 30000
+    });
+    reportData = resp.data;
+    console.log(`Fetched report from MobSF for ${hash} (has data: ${!!reportData})`);
+  }
+
+  if (!reportData) {
+    throw new Error('Report data not found');
+  }
+
+  if (!reportData.timestamp && !reportData.TIMESTAMP && !reportData.scan_date) {
+    reportData.timestamp = new Date().toISOString();
+    reportData.TIMESTAMP = reportData.timestamp;
+  }
+
+  const securityScore = calculateSecurityScore(reportData);
+  reportData.securityScore = securityScore;
+  reportData.security_score = securityScore;
+
+  fs.writeFileSync(destPath, JSON.stringify(reportData, null, 2), 'utf8');
+  if (triggerPdf) {
+    savePdfReportAsync(hash).catch(err => {
+      console.warn(`Failed to auto-save PDF for ${hash}:`, err.message);
+    });
+  }
+
+  return { data: reportData, path: destPath, cached };
+}
+
 // ✅ 8. Serve static saved reports
 app.use('/reports/json', express.static(JSON_DIR));
 app.use('/reports/pdf', express.static(PDF_DIR));
@@ -756,6 +751,7 @@ app.get('/api/scans', async (req, res) => {
     
     // Also load from saved JSON files (persistence) - ALWAYS include these
     let jsonFiles = [];
+    let existingHashes = new Set();
     try {
       if (!fs.existsSync(JSON_DIR)) {
         console.warn(`JSON_DIR does not exist: ${JSON_DIR}, creating it...`);
@@ -765,6 +761,7 @@ app.get('/api/scans', async (req, res) => {
       jsonFiles = fs.readdirSync(JSON_DIR).filter(f => 
         f.endsWith('.json') && !f.includes('_sonar') && !f.includes('_unified')
       );
+      existingHashes = new Set(jsonFiles.map(fn => path.basename(fn, '.json')));
       console.log(`Found ${jsonFiles.length} saved JSON files in ${JSON_DIR}`);
       if (jsonFiles.length > 0) {
         console.log(`Sample files: ${jsonFiles.slice(0, 3).join(', ')}`);
@@ -815,6 +812,26 @@ app.get('/api/scans', async (req, res) => {
     });
     console.log(`✅ Successfully loaded ${savedScans.length} saved scans`);
     
+    // Trigger background downloads for MobSF scans missing locally
+    const missingHashes = [];
+    mobsfScans.forEach(scan => {
+      const hash = scan.MD5 || scan.hash || scan.md5;
+      if (hash && !existingHashes.has(hash)) {
+        missingHashes.push(hash);
+        existingHashes.add(hash);
+      }
+    });
+    if (missingHashes.length > 0) {
+      console.log(`⬇️  Auto-saving ${missingHashes.length} MobSF scans locally...`);
+      missingHashes.forEach(hash => {
+        fetchAndSaveJsonReport(hash, { triggerPdf: false }).then(() => {
+          console.log(`✅ Auto-saved JSON for ${hash}`);
+        }).catch(err => {
+          console.warn(`⚠️ Auto-save failed for ${hash}: ${err.message}`);
+        });
+      });
+    }
+
     // Merge MobSF scans and saved scans, prioritize saved scans (they have more complete data)
     // Use a Map to deduplicate by hash, with saved scans taking precedence
     const scanMap = new Map();

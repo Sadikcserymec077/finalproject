@@ -53,6 +53,9 @@ apk-extracted/
 **/apk-extracted/
 **/apk-extracted/**
 
+# SQLite database files
+mobsf-ui-backend/data/
+
 # Build outputs
 build/
 dist/

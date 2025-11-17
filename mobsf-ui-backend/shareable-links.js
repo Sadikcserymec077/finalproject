@@ -6,132 +6,140 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
 
 const SHAREABLE_LINKS_FILE = path.join(__dirname, 'shareable-links.json');
 
-// Initialize shareable links file
-function initShareableLinks() {
-  if (!fs.existsSync(SHAREABLE_LINKS_FILE)) {
-    const initialData = {
-      links: [],
-      lastUpdated: new Date().toISOString()
-    };
-    fs.writeFileSync(SHAREABLE_LINKS_FILE, JSON.stringify(initialData, null, 2), 'utf8');
-  }
-}
+function migrateShareableLinksFile() {
+  if (!fs.existsSync(SHAREABLE_LINKS_FILE)) return;
+  const count = db.prepare('SELECT COUNT(*) AS count FROM shareable_links').get().count;
+  if (count > 0) return;
 
-// Load shareable links
-function loadShareableLinks() {
-  initShareableLinks();
   try {
-    const data = fs.readFileSync(SHAREABLE_LINKS_FILE, 'utf8');
-    return JSON.parse(data);
+    const fileData = JSON.parse(fs.readFileSync(SHAREABLE_LINKS_FILE, 'utf8'));
+    const links = fileData?.links || [];
+    const stmt = db.prepare(
+      `INSERT OR IGNORE INTO shareable_links
+      (token, hash, expires_at, max_views, views, password_hash, created_at, created_by, access_count, last_accessed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    links.forEach(link => {
+      stmt.run(
+        link.token,
+        link.hash,
+        link.expiresAt || null,
+        link.maxViews ?? null,
+        link.views || 0,
+        link.password || null,
+        link.createdAt || new Date().toISOString(),
+        link.createdBy || 'system',
+        link.accessCount || 0,
+        link.lastAccessed || null
+      );
+    });
+    console.log(`✅ Migrated ${links.length} shareable links from JSON to SQLite`);
   } catch (err) {
-    console.error('Error loading shareable links:', err);
-    initShareableLinks();
-    return loadShareableLinks();
+    console.error('Failed to migrate shareable-links.json:', err);
   }
-}
-
-// Save shareable links
-function saveShareableLinks(data) {
-  data.lastUpdated = new Date().toISOString();
-  fs.writeFileSync(SHAREABLE_LINKS_FILE, JSON.stringify(data, null, 2), 'utf8');
 }
 
 // Generate shareable link
 function generateShareableLink(hash, options = {}) {
-  const data = loadShareableLinks();
+  migrateShareableLinksFile();
   
   // Generate unique token
   const token = crypto.randomBytes(32).toString('hex');
+  const now = new Date().toISOString();
+  const passwordHash = options.password
+    ? crypto.createHash('sha256').update(options.password).digest('hex')
+    : null;
   
-  const link = {
+  db.prepare(
+    `INSERT INTO shareable_links
+     (token, hash, expires_at, max_views, views, password_hash, created_at, created_by, access_count)
+     VALUES (?, ?, ?, ?, 0, ?, ?, ?, 0)`
+  ).run(
     token,
     hash,
-    expiresAt: options.expiresAt || null, // null = never expires
-    maxViews: options.maxViews || null, // null = unlimited
-    views: 0,
-    password: options.password ? crypto.createHash('sha256').update(options.password).digest('hex') : null,
-    createdAt: new Date().toISOString(),
-    createdBy: options.createdBy || 'system',
-    accessCount: 0
-  };
-
-  data.links.push(link);
-  saveShareableLinks(data);
+    options.expiresAt || null,
+    options.maxViews ?? null,
+    passwordHash,
+    now,
+    options.createdBy || 'system'
+  );
 
   return {
     token,
     url: `${options.baseUrl || 'http://localhost:3000'}/shared/${token}`,
-    expiresAt: link.expiresAt,
-    maxViews: link.maxViews
+    expiresAt: options.expiresAt || null,
+    maxViews: options.maxViews ?? null
   };
 }
 
 // Verify and access shareable link
 function accessShareableLink(token, password = null) {
-  const data = loadShareableLinks();
-  const link = data.links.find(l => l.token === token);
+  migrateShareableLinksFile();
+  const link = db.prepare('SELECT * FROM shareable_links WHERE token = ?').get(token);
 
   if (!link) {
     return { success: false, error: 'Invalid link' };
   }
 
   // Check expiration
-  if (link.expiresAt && new Date(link.expiresAt) < new Date()) {
+  if (link.expires_at && new Date(link.expires_at) < new Date()) {
     return { success: false, error: 'Link has expired' };
   }
 
   // Check max views
-  if (link.maxViews && link.views >= link.maxViews) {
+  if (link.max_views && link.views >= link.max_views) {
     return { success: false, error: 'Link has reached maximum views' };
   }
 
   // Check password
-  if (link.password) {
+  if (link.password_hash) {
     if (!password) {
       return { success: false, error: 'Password required', requiresPassword: true };
     }
     const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
-    if (passwordHash !== link.password) {
+    if (passwordHash !== link.password_hash) {
       return { success: false, error: 'Invalid password' };
     }
   }
 
   // Increment views
-  link.views++;
-  link.accessCount++;
-  link.lastAccessed = new Date().toISOString();
-  saveShareableLinks(data);
+  db.prepare(
+    `UPDATE shareable_links
+     SET views = views + 1,
+         access_count = access_count + 1,
+         last_accessed = ?
+     WHERE token = ?`
+  ).run(new Date().toISOString(), token);
 
   return {
     success: true,
     hash: link.hash,
-    views: link.views,
-    maxViews: link.maxViews
+    views: link.views + 1,
+    maxViews: link.max_views
   };
 }
 
 // Revoke shareable link
 function revokeShareableLink(token) {
-  const data = loadShareableLinks();
-  const linkIndex = data.links.findIndex(l => l.token === token);
-
-  if (linkIndex === -1) {
+  migrateShareableLinksFile();
+  const info = db.prepare('SELECT token FROM shareable_links WHERE token = ?').get(token);
+  if (!info) {
     return { success: false, error: 'Link not found' };
   }
 
-  data.links.splice(linkIndex, 1);
-  saveShareableLinks(data);
+  db.prepare('DELETE FROM shareable_links WHERE token = ?').run(token);
 
   return { success: true };
 }
 
 // Get link info
 function getLinkInfo(token) {
-  const data = loadShareableLinks();
-  const link = data.links.find(l => l.token === token);
+  migrateShareableLinksFile();
+  const link = db.prepare('SELECT * FROM shareable_links WHERE token = ?').get(token);
 
   if (!link) {
     return null;
@@ -140,28 +148,32 @@ function getLinkInfo(token) {
   return {
     token: link.token,
     hash: link.hash,
-    expiresAt: link.expiresAt,
-    maxViews: link.maxViews,
+    expiresAt: link.expires_at,
+    maxViews: link.max_views,
     views: link.views,
-    createdAt: link.createdAt,
-    lastAccessed: link.lastAccessed,
-    hasPassword: !!link.password
+    createdAt: link.created_at,
+    lastAccessed: link.last_accessed,
+    hasPassword: !!link.password_hash
   };
 }
 
 // Get all links for a hash
 function getLinksForHash(hash) {
-  const data = loadShareableLinks();
-  return data.links
-    .filter(l => l.hash === hash)
-    .map(l => ({
-      token: l.token,
-      expiresAt: l.expiresAt,
-      maxViews: l.maxViews,
-      views: l.views,
-      createdAt: l.createdAt,
-      hasPassword: !!l.password
-    }));
+  migrateShareableLinksFile();
+  return db.prepare(
+    `SELECT token, expires_at AS expiresAt, max_views AS maxViews, views,
+            created_at AS createdAt, password_hash
+     FROM shareable_links
+     WHERE hash = ?
+     ORDER BY created_at DESC`
+  ).all(hash).map(row => ({
+    token: row.token,
+    expiresAt: row.expiresAt,
+    maxViews: row.maxViews,
+    views: row.views,
+    createdAt: row.createdAt,
+    hasPassword: !!row.password_hash
+  }));
 }
 
 module.exports = {

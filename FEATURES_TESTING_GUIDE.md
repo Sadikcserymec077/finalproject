@@ -68,13 +68,13 @@ To: recipient@example.com
    - You can access protected features
 
 3. **Register New User:**
-   - Currently, registration is available via API only
-   - You can use the API endpoint: `POST /api/auth/register`
-   - Or modify `users.json` file in `mobsf-ui-backend/` directory
+   - Use the API endpoint: `POST /api/auth/register`
+   - Alternatively, insert a row into the `users` table inside `mobsf-ui-backend/data/mobsf-ui.db`
+     (any SQLite client/CLI works; passwords must be bcrypt hashes)
 
 4. **Change Password:**
-   - After logging in, you can change password via API: `POST /api/auth/change-password`
-   - Or directly edit `users.json` (passwords are hashed with bcrypt)
+   - After logging in, use `POST /api/auth/change-password`
+   - Or update the `users` table in SQLite with a new bcrypt hash
 
 ### API Testing (using curl or Postman):
 
@@ -224,8 +224,8 @@ http://localhost:3000/shared/abc123def456...
 - Check backend logs for error messages
 
 ### Login Not Working?
-- Verify users.json file exists in `mobsf-ui-backend/`
-- Check if password is hashed correctly
+- Verify `mobsf-ui-backend/data/mobsf-ui.db` exists and is writable
+- Check if the `users` table contains the expected account
 - Try resetting password via API
 
 ### Shareable Links Not Working?

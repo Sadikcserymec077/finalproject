@@ -241,7 +241,7 @@ static-analysis-mobsf/
 - Password change functionality
 
 **Storage:**
-- User data in `users.json`
+- User accounts stored in SQLite (`mobsf-ui-backend/data/mobsf-ui.db`, `users` table)
 - Tokens stored in localStorage (frontend)
 - Secure password hashing
 
@@ -252,7 +252,7 @@ static-analysis-mobsf/
 - Favorites toggle
 - Archive/unarchive
 - Annotations (notes, false positives)
-- JSON-based storage
+- SQLite-backed storage (`report_metadata`, `report_tags`, `annotations`)
 
 **UI Components:**
 - `TagManager.js` - Tag management
@@ -449,10 +449,9 @@ User Request → Backend Check Cache
 - `auth.js` - User authentication
 - `cache.js` - Performance caching
 
-**Configuration:**
+**Configuration & Data:**
 - `notifications-config.json` - Email settings
-- `metadata.json` - Report metadata
-- `users.json` - User accounts
+- `data/mobsf-ui.db` - SQLite database (users, metadata, shareable links)
 - `.env` - Environment variables
 
 **Storage:**
