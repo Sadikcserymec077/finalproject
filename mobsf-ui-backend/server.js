@@ -1,5 +1,5 @@
 // ✅ MobSF Proxy Backend - server.js
-// Works with MobSF running locally (http://localhost:8000)
+// Works with MobSF running locally (http://localhost:8888)
 // Node + Express backend that proxies MobSF API calls and caches reports
 
 // 🔹 Force-clear old global vars and load .env fresh
@@ -64,7 +64,7 @@ const PDF_DIR = path.join(REPORTS_DIR, 'pdf');
 });
 
 // ✅ MobSF Config
-const MOBSF_URL = process.env.MOBSF_URL || 'http://localhost:8000';
+const MOBSF_URL = process.env.MOBSF_URL || 'http://localhost:8888';
 const MOBSF_API_KEY = process.env.MOBSF_API_KEY;
 if (!MOBSF_API_KEY) {
   console.error('❌ MOBSF_API_KEY not found in .env');
@@ -82,7 +82,26 @@ const mobHeaders = () => ({
 function sendProxyError(res, err) {
   const status = err?.response?.status || 500;
   const body = err?.response?.data || { message: err.message };
-  console.error(`Proxy error (${status}):`, JSON.stringify(body, null, 2));
+  
+  // Enhanced error logging
+  console.error(`❌ Proxy error (${status}):`);
+  console.error('   Error message:', err.message);
+  console.error('   Error code:', err.code);
+  if (err.response) {
+    console.error('   Response status:', err.response.status);
+    console.error('   Response data:', JSON.stringify(body, null, 2));
+  } else if (err.request) {
+    console.error('   No response received - connection failed');
+    console.error('   Request config:', {
+      url: err.config?.url,
+      method: err.config?.method,
+      baseURL: err.config?.baseURL
+    });
+  }
+  if (err.stack) {
+    console.error('   Stack trace:', err.stack);
+  }
+  
   res.status(status).json({ error: body });
 }
 
@@ -97,17 +116,66 @@ app.post('/api/upload', upload.array('file', 10), async (req, res) => {
     if (req.files.length === 1) {
       const file = req.files[0];
       const filePath = file.path;
-    const form = new FormData();
+      
+      // Verify file exists and has content
+      if (!fs.existsSync(filePath)) {
+        return res.status(422).json({ error: 'Uploaded file not found on server' });
+      }
+      
+      const fileStats = fs.statSync(filePath);
+      if (fileStats.size === 0) {
+        fs.unlinkSync(filePath);
+        return res.status(422).json({ error: 'Uploaded file is empty' });
+      }
+      
+      console.log(`📤 Uploading file to MobSF: ${file.originalname} (${(fileStats.size / 1024 / 1024).toFixed(2)} MB)`);
+      console.log(`📤 MobSF URL: ${MOBSF_URL}/api/v1/upload`);
+      
+      const form = new FormData();
       form.append('file', fs.createReadStream(filePath), file.originalname);
 
-    console.log('Forwarding upload to MobSF...');
-    const resp = await axios.post(`${MOBSF_URL}/api/v1/upload`, form, {
-      headers: { ...form.getHeaders(), ...mobHeaders() },
-      maxBodyLength: Infinity,
-    });
+      console.log('Forwarding upload to MobSF...');
+      try {
+        const resp = await axios.post(`${MOBSF_URL}/api/v1/upload`, form, {
+          headers: { ...form.getHeaders(), ...mobHeaders() },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+          timeout: 300000, // 5 minutes timeout for large files
+        });
 
-    fs.unlinkSync(filePath); // clean temp
-      return res.json(resp.data);
+        fs.unlinkSync(filePath); // clean temp
+        console.log(`✅ Upload successful: ${file.originalname}`);
+        return res.json(resp.data);
+      } catch (uploadErr) {
+        // Clean up file on error
+        try { fs.unlinkSync(filePath); } catch {}
+        
+        // Enhanced error logging
+        console.error('❌ Upload to MobSF failed:');
+        console.error('   Error message:', uploadErr.message);
+        console.error('   Error code:', uploadErr.code);
+        if (uploadErr.response) {
+          console.error('   MobSF response status:', uploadErr.response.status);
+          console.error('   MobSF response data:', JSON.stringify(uploadErr.response.data, null, 2));
+        } else if (uploadErr.request) {
+          console.error('   No response from MobSF - connection failed');
+          console.error('   Check if MobSF is running at:', MOBSF_URL);
+        }
+        console.error('   Stack trace:', uploadErr.stack);
+        
+        // Return detailed error
+        const errorMessage = uploadErr.response?.data?.error || 
+                           uploadErr.response?.data?.message ||
+                           uploadErr.message ||
+                           'Unknown error during upload';
+        const statusCode = uploadErr.response?.status || 500;
+        
+        return res.status(statusCode).json({ 
+          error: errorMessage,
+          details: uploadErr.response?.data || { message: uploadErr.message },
+          code: uploadErr.code
+        });
+      }
     }
 
     // Multiple files - process sequentially
@@ -122,6 +190,8 @@ app.post('/api/upload', upload.array('file', 10), async (req, res) => {
         const resp = await axios.post(`${MOBSF_URL}/api/v1/upload`, form, {
           headers: { ...form.getHeaders(), ...mobHeaders() },
           maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+          timeout: 300000, // 5 minutes timeout for large files
         });
 
         fs.unlinkSync(filePath); // clean temp
@@ -133,10 +203,20 @@ app.post('/api/upload', upload.array('file', 10), async (req, res) => {
       } catch (err) {
         // Clean up file even on error
         try { fs.unlinkSync(file.path); } catch {}
+        
+        // Enhanced error logging
+        console.error(`❌ Upload failed for ${file.originalname}:`, err.message);
+        if (err.response) {
+          console.error('   MobSF response:', err.response.status, JSON.stringify(err.response.data, null, 2));
+        } else if (err.request) {
+          console.error('   No response from MobSF - connection failed');
+        }
+        
         results.push({
           filename: file.originalname,
           success: false,
-          error: err.response?.data?.error || err.message
+          error: err.response?.data?.error || err.response?.data?.message || err.message,
+          details: err.response?.data
         });
       }
     }

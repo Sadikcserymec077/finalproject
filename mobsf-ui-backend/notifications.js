@@ -358,7 +358,7 @@ async function notifyScanComplete(hash, appName, score, findings, attachReports 
     if (!fs.existsSync(pdfPath)) {
       try {
         const axios = require('axios');
-        const MOBSF_URL = process.env.MOBSF_URL || 'http://localhost:8000';
+        const MOBSF_URL = process.env.MOBSF_URL || 'http://localhost:8888';
         const MOBSF_API_KEY = process.env.MOBSF_API_KEY || '';
         
         // Generate PDF from MobSF
