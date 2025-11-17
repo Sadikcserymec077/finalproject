@@ -4,7 +4,9 @@
 
 // 🔹 Force-clear old global vars and load .env fresh
 delete process.env.MOBSF_API_KEY;
-require('dotenv').config();
+delete process.env.MOBSF_URL; // Also clear MOBSF_URL to ensure .env is used
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
 const axios = require('axios');
@@ -12,7 +14,6 @@ const FormData = require('form-data');
 const multer = require('multer');
 const cors = require('cors');
 const fs = require('fs');
-const path = require('path');
 const metadata = require('./metadata');
 const notifications = require('./notifications');
 const auth = require('./auth');
@@ -36,7 +37,53 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// ✅ Health check endpoint
+// ✅ Health check endpoint (defined after MOBSF_URL is set)
+
+// ✅ Directories for saved reports
+const REPORTS_DIR = path.join(__dirname, 'reports');
+const JSON_DIR = path.join(REPORTS_DIR, 'json');
+const PDF_DIR = path.join(REPORTS_DIR, 'pdf');
+[REPORTS_DIR, JSON_DIR, PDF_DIR].forEach(d => {
+  try { fs.mkdirSync(d, { recursive: true }); } catch {}
+});
+
+// ✅ MobSF Config
+// Force read from .env file and OVERRIDE any existing environment variables
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf8');
+  envContent.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...values] = trimmed.split('=');
+      if (key && values.length > 0) {
+        const value = values.join('=').trim();
+        // FORCE override - don't check if it exists, always use .env value
+        process.env[key.trim()] = value;
+      }
+    }
+  });
+  console.log('📄 Loaded .env file from:', envPath);
+} else {
+  console.warn('⚠️  .env file not found at:', envPath);
+}
+
+const MOBSF_URL = process.env.MOBSF_URL || 'http://localhost:8888';
+const MOBSF_API_KEY = process.env.MOBSF_API_KEY;
+if (!MOBSF_API_KEY) {
+  console.error('❌ MOBSF_API_KEY not found in .env');
+  console.error('   Checked .env file at:', envPath);
+  process.exit(1);
+}
+console.log('Using MOBSF_URL:', MOBSF_URL);
+console.log('Using MOBSF_API_KEY:', MOBSF_API_KEY.slice(0, 6) + '...' + MOBSF_API_KEY.slice(-6));
+
+const mobHeaders = () => ({
+  Authorization: MOBSF_API_KEY,
+  'X-Mobsf-Api-Key': MOBSF_API_KEY,
+});
+
+// ✅ Health check endpoint (moved here so MOBSF_URL is available)
 app.get('/', (req, res) => {
   res.json({
     status: 'OK',
@@ -53,29 +100,6 @@ app.get('/', (req, res) => {
     mobsf_url: MOBSF_URL,
     timestamp: new Date().toISOString()
   });
-});
-
-// ✅ Directories for saved reports
-const REPORTS_DIR = path.join(__dirname, 'reports');
-const JSON_DIR = path.join(REPORTS_DIR, 'json');
-const PDF_DIR = path.join(REPORTS_DIR, 'pdf');
-[REPORTS_DIR, JSON_DIR, PDF_DIR].forEach(d => {
-  try { fs.mkdirSync(d, { recursive: true }); } catch {}
-});
-
-// ✅ MobSF Config
-const MOBSF_URL = process.env.MOBSF_URL || 'http://localhost:8888';
-const MOBSF_API_KEY = process.env.MOBSF_API_KEY;
-if (!MOBSF_API_KEY) {
-  console.error('❌ MOBSF_API_KEY not found in .env');
-  process.exit(1);
-}
-console.log('Using MOBSF_URL:', MOBSF_URL);
-console.log('Using MOBSF_API_KEY:', MOBSF_API_KEY.slice(0, 6) + '...' + MOBSF_API_KEY.slice(-6));
-
-const mobHeaders = () => ({
-  Authorization: MOBSF_API_KEY,
-  'X-Mobsf-Api-Key': MOBSF_API_KEY,
 });
 
 // Helper: handle and forward proxy errors clearly
